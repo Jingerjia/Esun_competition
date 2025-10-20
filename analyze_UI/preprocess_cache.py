@@ -1,0 +1,290 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Preprocess & Split Cache Builder (FAST bucketed version)
+按帳號 SHA1 前兩位分桶，一次性寫入，每桶最多 100,000 筆。
+
+Usage:
+    python preprocess_cache_split_fast.py
+"""
+
+from __future__ import annotations
+import pandas as pd, numpy as np, hashlib, json, string
+from pathlib import Path
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+# ========= CONFIG =========
+DATA_DIR = "datasets/initial_competition"
+SRC_TXN = f"{DATA_DIR}/acct_transaction.csv"
+SRC_ALERT = f"{DATA_DIR}/acct_alert.csv"
+SRC_PREDICT = f"{DATA_DIR}/acct_predict.csv"
+
+CACHE_DIR = Path("C:/Users/User/Desktop/JM_competition/analyze_UI/cache")
+DETAILS_DIR = CACHE_DIR / "details"
+DETAILS_DIR.mkdir(parents=True, exist_ok=True)
+
+MAX_ROWS_PER_FILE = 100_000
+
+INDEX_JSON = CACHE_DIR / "account_index.json"
+SUMMARY_CSV = CACHE_DIR / "acct_summary.csv"
+RANK_TXNCOUNT_CSV = CACHE_DIR / "rank_by_txn_count.csv"
+RANK_TXNAMT_CSV = CACHE_DIR / "rank_by_txn_amt.csv"
+RANK_DAYSPAN_CSV = CACHE_DIR / "rank_by_day_span.csv"
+DIST_DAYSPAN_CSV = CACHE_DIR / "dist_day_span_bucket.csv"
+DIST_MEANTXN_CSV = CACHE_DIR / "dist_mean_txn_per_day_bucket.csv"
+PIE_DAYSPAN_PNG = lambda group: CACHE_DIR / f"fig_day_span_{group}.png"
+PIE_MEANTXN_PNG = lambda group: CACHE_DIR / f"fig_mean_txn_{group}.png"
+
+CHANNEL_MAP = {
+    "01": "ATM", "02": "臨櫃", "03": "行動銀行", "04": "網路銀行",
+    "05": "語音", "06": "eATM", "07": "電子支付", "99": "系統排程", "UNK": "未知"
+}
+
+# ========= Functions =========
+def sha1_prefix_2(acct: str) -> str:
+    return hashlib.sha1(acct.encode("utf-8")).hexdigest()[:2]
+
+def read_sources():
+    txn = pd.read_csv(
+        SRC_TXN,
+        dtype={
+            "from_acct": "string","from_acct_type":"string","to_acct":"string","to_acct_type":"string",
+            "is_self_txn":"string","txn_amt":"float64","txn_date":"Int64","txn_time":"string",
+            "currency_type":"string","channel_type":"string",
+        }
+    )
+    txn["txn_time"] = txn["txn_time"].fillna("00:00:00")
+    for col in ["from_acct_type","to_acct_type","is_self_txn","currency_type","channel_type"]:
+        txn[col] = txn[col].fillna("UNK").astype("string")
+
+    alert = pd.read_csv(SRC_ALERT, dtype={"acct":"string","event_date":"Int64"})
+    predict = pd.read_csv(SRC_PREDICT, dtype={"acct":"string","label":"Int64"})
+    return txn, alert, predict
+
+def build_details_df(txn: pd.DataFrame) -> pd.DataFrame:
+    rowno = np.arange(len(txn))
+    txn_id = (
+        txn["from_acct"].astype(str) + "|" + txn["to_acct"].astype(str) + "|" +
+        txn["txn_amt"].astype(str) + "|" + txn["txn_date"].astype(str) + "|" +
+        txn["txn_time"].astype(str) + "|" + pd.Series(rowno).astype(str)
+    ).apply(lambda s: hashlib.sha1(s.encode()).hexdigest())
+    txn = txn.assign(txn_id=txn_id)
+
+    base = ["txn_amt","currency_type","is_self_txn","channel_type","txn_date","txn_time",
+            "from_acct","from_acct_type","to_acct","to_acct_type","txn_id"]
+
+    out_df = txn[base].copy()
+    out_df["acct"] = txn["from_acct"]
+    out_df["role"] = "OUT"
+    out_df["counterparty_acct"] = txn["to_acct"]
+
+    in_df = txn[base].copy()
+    in_df["acct"] = txn["to_acct"]
+    in_df["role"] = "IN"
+    in_df["counterparty_acct"] = txn["from_acct"]
+
+    details = pd.concat([out_df, in_df], ignore_index=True)
+    cols = ["acct","role","counterparty_acct","txn_amt","currency_type","is_self_txn","channel_type",
+            "txn_date","txn_time","from_acct","from_acct_type","to_acct","to_acct_type","txn_id"]
+    details = details[cols]
+    return details.sort_values(["acct","txn_date","txn_time","txn_id"], kind="mergesort")
+
+def classify_esun(txn: pd.DataFrame) -> pd.Series:
+    s_from = txn.groupby("from_acct")["from_acct_type"].apply(lambda s: set(s))
+    s_to = txn.groupby("to_acct")["to_acct_type"].apply(lambda s: set(s))
+    all_accts = set(s_from.index) | set(s_to.index)
+    out = {}
+    for a in all_accts:
+        t = set()
+        if a in s_from: t |= s_from[a]
+        if a in s_to: t |= s_to[a]
+        out[a] = "esun" if t=={"01"} else "non_esun"
+    return pd.Series(out,name="acct_class")
+
+def build_summary(details: pd.DataFrame, txn: pd.DataFrame, alert: pd.DataFrame):
+    cnt = details.groupby("acct").size().rename("total_txn_count")
+    day_min = details.groupby("acct")["txn_date"].min()
+    day_max = details.groupby("acct")["txn_date"].max()
+    span = (day_max - day_min + 1).rename("day_span")
+    per_day = details.groupby(["acct","txn_date"]).size()
+    mean = (cnt / span).rename("mean_txn_per_day")
+    maxpd = per_day.groupby("acct").max().rename("max_txn_per_day")
+    amt_twd = details[details["currency_type"]=="TWD"].groupby("acct")["txn_amt"].sum().rename("total_amt_twd")
+    esun = classify_esun(txn)
+    alert_min = alert.groupby("acct")["event_date"].min()
+    df = pd.DataFrame({
+        "acct": cnt.index,
+        "total_txn_count": cnt.values,
+        "day_span": span.values,
+        "mean_txn_per_day": mean.values,
+        "max_txn_per_day": maxpd.reindex(cnt.index, fill_value=0).values,
+        "total_amt_twd": amt_twd.reindex(cnt.index, fill_value=0).values,
+        "acct_class": [esun.get(a,"non_esun") for a in cnt.index],
+        "alert_first_event_date": [alert_min.get(a, pd.NA) for a in cnt.index]
+    })
+    df.to_csv(SUMMARY_CSV, index=False)
+    return df
+
+def build_rankings(df: pd.DataFrame):
+    df.sort_values(["total_txn_count","day_span"], ascending=[False,False]).to_csv(RANK_TXNCOUNT_CSV,index=False)
+    df.sort_values(["total_amt_twd","day_span"], ascending=[False,False]).to_csv(RANK_TXNAMT_CSV,index=False)
+    df.sort_values(["day_span","mean_txn_per_day"], ascending=[False,False]).to_csv(RANK_DAYSPAN_CSV,index=False)
+
+# --------- fast split write -----------
+def write_split_fast(details: pd.DataFrame):
+    print("[*] Hashing & sorting for bucket writing ...")
+    details["bucket"] = details["acct"].apply(sha1_prefix_2)
+    details = details.sort_values(["bucket","acct"], kind="mergesort")
+    index_map = {}
+
+    print("[*] Writing bucket files (100k rows each) ...")
+    cols = [c for c in details.columns if c!="bucket"]
+    header_line = ",".join(cols)+"\n"
+
+    for bucket, g in details.groupby("bucket", sort=True):
+        rows_total = len(g)
+        chunks = (rows_total // MAX_ROWS_PER_FILE) + (1 if rows_total % MAX_ROWS_PER_FILE else 0)
+        start = 0
+        for i in range(chunks):
+            sub = g.iloc[i*MAX_ROWS_PER_FILE:(i+1)*MAX_ROWS_PER_FILE]
+            suffix = "" if i==0 else string.ascii_lowercase[i-1] if i<=26 else f"{string.ascii_lowercase[(i-1)//26-1]}{string.ascii_lowercase[(i-1)%26]}"
+            fname = DETAILS_DIR / f"detail_{bucket}{suffix}.csv"
+            with open(fname,"w",encoding="utf-8",newline="") as f:
+                f.write(header_line)
+                sub[cols].to_csv(f, index=False, header=False, lineterminator="\n")
+            # index registration
+            pos = 0
+            for acct, subg in sub.groupby("acct", sort=False):
+                index_map[acct] = {"file": fname.name, "start": pos, "end": pos+len(subg)}
+                pos += len(subg)
+        print(f"  Bucket {bucket}: {rows_total} rows → {chunks} file(s)")
+    with open(INDEX_JSON,"w",encoding="utf-8") as f:
+        json.dump({"meta":{"version":3,"split":"sha1-2hex","max_rows_per_file":MAX_ROWS_PER_FILE},
+                   "index": index_map}, f, ensure_ascii=False, indent=2)
+    print(f"[✓] Wrote {len(index_map)} accounts index to", INDEX_JSON)
+
+# --------- distributions ---------
+def bucket_day_span(x):
+    if pd.isna(x): return "NA"
+    if x<=1: return "1d"
+    if x<=3: return "2-3d"
+    if x<=7: return "4-7d"
+    if x<=14: return "8-14d"
+    if x<=30: return "15-30d"
+    if x<=60: return "31-60d"
+    if x<=90: return "61-90d"
+    return "90d+"
+
+def bucket_mean_txn(x):
+    if pd.isna(x): return "NA"
+    if x<=1: return "1"
+    if x<=2: return "2"
+    if x<=5: return "3-5"
+    if x<=10: return "6-10"
+    if x<=20: return "11-20"
+    if x<=50: return "21-50"
+    if x<=100: return "51-100"
+    if x<=500: return "101-500"
+    return "500+"
+
+def compute_groups(summary, alert, predict):
+    groups = {}
+    alert_accts = set(alert["acct"].dropna())
+    pred_accts = set(predict["acct"].dropna())
+    groups["all"] = summary
+    groups["alert"] = summary[summary["acct"].isin(alert_accts)]
+    groups["predict"] = summary[summary["acct"].isin(pred_accts)]
+    groups["esun"] = summary[summary["acct_class"]=="esun"]
+    groups["non_esun"] = summary[summary["acct_class"]=="non_esun"]
+    return groups
+
+def build_distributions(groups):
+    day_rows, mean_rows = [], []
+    for gname, df in groups.items():
+        if df.empty: continue
+        d_b = df["day_span"].apply(bucket_day_span)
+        m_b = df["mean_txn_per_day"].apply(bucket_mean_txn)
+        d_counts = d_b.value_counts().reindex(["1d","2-3d","4-7d","8-14d","15-30d","31-60d","61-90d","90d+"],fill_value=0)
+        m_counts = m_b.value_counts().reindex(["1","2","3-5","6-10","11-20","21-50","51-100","101-500","500+"],fill_value=0)
+        for k,v in d_counts.items(): day_rows.append({"group":gname,"bucket":k,"count":int(v)})
+        for k,v in m_counts.items(): mean_rows.append({"group":gname,"bucket":k,"count":int(v)})
+        # pies
+        def pie(counts, title, out_path):
+            labels=[k for k,v in counts.items() if v>0]; sizes=[v for v in counts.values if v>0]
+            fig,ax=plt.subplots(figsize=(6,6))
+            wedges,_=ax.pie(sizes,startangle=90)
+            ax.legend(wedges,labels,title="Buckets",loc="center left",bbox_to_anchor=(1,0,0.5,1))
+            ax.set_title(title); ax.axis("equal")
+            fig.savefig(out_path,bbox_inches="tight"); plt.close(fig)
+        pie(d_counts,f"Day Span ({gname})",PIE_DAYSPAN_PNG(gname))
+        pie(m_counts,f"Mean Txn/Day ({gname})",PIE_MEANTXN_PNG(gname))
+    pd.DataFrame(day_rows).to_csv(DIST_DAYSPAN_CSV,index=False)
+    pd.DataFrame(mean_rows).to_csv(DIST_MEANTXN_CSV,index=False)
+
+# --------- MAIN ---------
+def main():
+    print("[*] Checking existing cache ...")
+    need_rebuild = False
+    generated = []
+
+    # 主要快取檔案
+    essential_files = [
+        INDEX_JSON, SUMMARY_CSV, DIST_DAYSPAN_CSV, DIST_MEANTXN_CSV,
+        RANK_TXNCOUNT_CSV, RANK_TXNAMT_CSV, RANK_DAYSPAN_CSV
+    ]
+    for f in essential_files:
+        if not f.exists():
+            need_rebuild = True
+            break
+
+    if not need_rebuild:
+        print("[✓] Cache summary/index/distributions already exist.")
+    else:
+        print("[*] Some cache files missing, rebuilding essential parts...")
+
+    # --- 檢查 detail split 是否存在 ---
+    has_details = any(DETAILS_DIR.glob("detail_*.csv"))
+    if not has_details:
+        print("[!] Missing detail CSVs, will rebuild details/index.")
+        need_rebuild = True
+
+    # --- 若都存在，僅補生成缺的 PIE 圖 ---
+    if not need_rebuild:
+        need_pies = []
+        for g in ["all", "alert", "predict", "esun", "non_esun"]:
+            if not PIE_DAYSPAN_PNG(g).exists() or not PIE_MEANTXN_PNG(g).exists():
+                need_pies.append(g)
+        if need_pies:
+            print(f"[*] Missing {len(need_pies)} group pie charts, regenerating those ...")
+            txn, alert, predict = read_sources()
+            summary = pd.read_csv(SUMMARY_CSV, dtype={"acct": "string"})
+            groups = compute_groups(summary, alert, predict)
+            for g in need_pies:
+                build_distributions({g: groups[g]})
+            print(f"[✓] Regenerated pie charts for groups: {', '.join(need_pies)}")
+        else:
+            print("[✓] All cache files already exist, nothing to do.")
+        print("[✓] Done. Cache verified at:", CACHE_DIR)
+        return
+
+    # === 若缺檔，執行完整流程 ===
+    print("[*] Reading source CSVs ...")
+    txn, alert, predict = read_sources()
+    print("[*] Building IN/OUT details ...")
+    details = build_details_df(txn)
+    print("[*] Writing split bucket CSVs ...")
+    write_split_fast(details)
+    print("[*] Building summary and rankings ...")
+    summary = build_summary(details, txn, alert)
+    build_rankings(summary)
+    print("[*] Building distributions and pie charts ...")
+    groups = compute_groups(summary, alert, predict)
+    build_distributions(groups)
+
+    print("[✓] Cache generation completed at:", CACHE_DIR)
+
+
+if __name__ == "__main__":
+    main()
