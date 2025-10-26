@@ -14,6 +14,7 @@ from pathlib import Path
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 # ========= CONFIG =========
 DATA_DIR = "datasets/initial_competition"
@@ -21,7 +22,7 @@ SRC_TXN = f"{DATA_DIR}/acct_transaction.csv"
 SRC_ALERT = f"{DATA_DIR}/acct_alert.csv"
 SRC_PREDICT = f"{DATA_DIR}/acct_predict.csv"
 
-CACHE_DIR = Path("C:/Users/User/Desktop/JM_competition/analyze_UI/cache")
+CACHE_DIR = Path("analyze_UI/cache")
 DETAILS_DIR = CACHE_DIR / "details"
 DETAILS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -34,8 +35,13 @@ RANK_TXNAMT_CSV = CACHE_DIR / "rank_by_txn_amt.csv"
 RANK_DAYSPAN_CSV = CACHE_DIR / "rank_by_day_span.csv"
 DIST_DAYSPAN_CSV = CACHE_DIR / "dist_day_span_bucket.csv"
 DIST_MEANTXN_CSV = CACHE_DIR / "dist_mean_txn_per_day_bucket.csv"
-PIE_DAYSPAN_PNG = lambda group: CACHE_DIR / f"fig_day_span_{group}.png"
-PIE_MEANTXN_PNG = lambda group: CACHE_DIR / f"fig_mean_txn_{group}.png"
+PIE_DAYSPAN_PNG = lambda group: CACHE_DIR / f"img/fig_day_span_{group}.png"
+PIE_MEANTXN_PNG = lambda group: CACHE_DIR / f"img/fig_mean_txn_{group}.png"
+
+IMG_DIR = CACHE_DIR / "img"
+IMG_DIR.mkdir(parents=True, exist_ok=True)
+
+print(f"IMG_DIR = {IMG_DIR}")
 
 CHANNEL_MAP = {
     "01": "ATM", "02": "臨櫃", "03": "行動銀行", "04": "網路銀行",
@@ -109,7 +115,8 @@ def build_summary(details: pd.DataFrame, txn: pd.DataFrame, alert: pd.DataFrame)
     day_max = details.groupby("acct")["txn_date"].max()
     span = (day_max - day_min + 1).rename("day_span")
     per_day = details.groupby(["acct","txn_date"]).size()
-    mean = (cnt / span).rename("mean_txn_per_day")
+    active_days = per_day.groupby("acct").size().rename("active_days")  
+    mean = (cnt / active_days).rename("mean_txn_per_day")
     maxpd = per_day.groupby("acct").max().rename("max_txn_per_day")
     amt_twd = details[details["currency_type"]=="TWD"].groupby("acct")["txn_amt"].sum().rename("total_amt_twd")
     esun = classify_esun(txn)
@@ -118,7 +125,8 @@ def build_summary(details: pd.DataFrame, txn: pd.DataFrame, alert: pd.DataFrame)
         "acct": cnt.index,
         "total_txn_count": cnt.values,
         "day_span": span.values,
-        "mean_txn_per_day": mean.values,
+        "mean_txn_per_day": mean.reindex(cnt.index, fill_value=0).values,
+        "active_days": active_days.reindex(cnt.index, fill_value=0).values,
         "max_txn_per_day": maxpd.reindex(cnt.index, fill_value=0).values,
         "total_amt_twd": amt_twd.reindex(cnt.index, fill_value=0).values,
         "acct_class": [esun.get(a,"non_esun") for a in cnt.index],
@@ -131,6 +139,7 @@ def build_rankings(df: pd.DataFrame):
     df.sort_values(["total_txn_count","day_span"], ascending=[False,False]).to_csv(RANK_TXNCOUNT_CSV,index=False)
     df.sort_values(["total_amt_twd","day_span"], ascending=[False,False]).to_csv(RANK_TXNAMT_CSV,index=False)
     df.sort_values(["day_span","mean_txn_per_day"], ascending=[False,False]).to_csv(RANK_DAYSPAN_CSV,index=False)
+    df.sort_values(["active_days","mean_txn_per_day"], ascending=[False,False]).to_csv(RANK_DAYSPAN_CSV,index=False)
 
 # --------- fast split write -----------
 def write_split_fast(details: pd.DataFrame):
@@ -224,9 +233,9 @@ def build_distributions(groups):
     pd.DataFrame(mean_rows).to_csv(DIST_MEANTXN_CSV,index=False)
 
 # --------- MAIN ---------
-def main():
+def main(Reconstruct = False):
     print("[*] Checking existing cache ...")
-    need_rebuild = False
+    need_rebuild = Reconstruct
     generated = []
 
     # 主要快取檔案
@@ -273,6 +282,9 @@ def main():
     print("[*] Reading source CSVs ...")
     txn, alert, predict = read_sources()
     print("[*] Building IN/OUT details ...")
+    rows = []
+    for i, row in tqdm(txn.iterrows(), total=len(txn), desc="展開交易中", ncols=100):
+        rows.append(row)
     details = build_details_df(txn)
     print("[*] Writing split bucket CSVs ...")
     write_split_fast(details)
@@ -287,4 +299,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    Reconstruct = True
+    main(Reconstruct)
