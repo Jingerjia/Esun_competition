@@ -20,14 +20,15 @@ DATA_DIR = Path("datasets/initial_competition")
 DETAILS_DIR = CACHE_DIR / "details"
 RANK_DIR = CACHE_DIR / "ranks"
 RANK_DIR.mkdir(parents=True, exist_ok=True)
+IMG_DIR = CACHE_DIR / "img"
 
 INDEX_JSON = CACHE_DIR / "account_index.json"
 SUMMARY_CSV = CACHE_DIR / "acct_summary.csv"
 PREDICT_ACC = DATA_DIR / "acct_predict.csv"
 DIST_DAYSPAN_CSV = CACHE_DIR / "dist_day_span_bucket.csv"
 DIST_MEANTXN_CSV = CACHE_DIR / "dist_mean_txn_per_day_bucket.csv"
-PIE_DAYSPAN = CACHE_DIR / "fig_day_span_all.png"
-PIE_MEANTXN = CACHE_DIR / "fig_mean_txn_all.png"
+PIE_DAYSPAN = IMG_DIR / "fig_day_span_all.png"
+PIE_MEANTXN = IMG_DIR / "fig_mean_txn_all.png"
 
 CHANNEL_MAP = {
     "01": "ATM", "02": "臨櫃", "03": "行動銀行", "04": "網路銀行",
@@ -280,8 +281,8 @@ class AccountViewer(tk.Tk):
             "非玉山帳戶": "non_esun"
         }
         g = name_map.get(self.chart_group_var.get(), "all")
-        f_day = CACHE_DIR / f"fig_day_span_{g}.png"
-        f_mean = CACHE_DIR / f"fig_mean_txn_{g}.png"
+        f_day = IMG_DIR / f"fig_day_span_{g}.png"
+        f_mean = IMG_DIR / f"fig_mean_txn_{g}.png"
 
         # === 圖片 ===
         img_frame = ttk.Frame(self.chart_content)
@@ -324,9 +325,9 @@ class AccountViewer(tk.Tk):
                 ttk.Label(col_frame, text="⚠️ 無統計資料").pack(anchor="center")
 
         # 三圖路徑
-        f_day = CACHE_DIR / f"fig_day_span_{g}.png"
-        f_mean = CACHE_DIR / f"fig_mean_txn_{g}.png"
-        f_total = CACHE_DIR / f"fig_total_txn_{g}.png"
+        f_day = IMG_DIR / f"fig_day_span_{g}.png"
+        f_mean = IMG_DIR / f"fig_mean_txn_{g}.png"
+        f_total = IMG_DIR / f"fig_total_txn_{g}.png"
 
         dist_day = DIST_DAYSPAN_CSV
         dist_mean = DIST_MEANTXN_CSV
@@ -390,7 +391,7 @@ class AccountViewer(tk.Tk):
                           bbox_to_anchor=(1, 0, 0.5, 1))
                 ax.set_title(f"Total Txn Count ({gname})")
                 ax.axis("equal")
-                fig.savefig(CACHE_DIR / f"fig_total_txn_{gname}.png", bbox_inches="tight")
+                fig.savefig(IMG_DIR / f"fig_total_txn_{gname}.png", bbox_inches="tight")
                 plt.close(fig)
                 print(f"  [OK] 已生成 fig_total_txn_{gname}.png")
 
