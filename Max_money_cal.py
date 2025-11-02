@@ -10,28 +10,7 @@ DETAILS_DIR = CACHE_DIR / "details"
 DATAFILES_DIR = Path("datafiles")
 
 MAX_MONEY_JSON = DATAFILES_DIR / "max_money.json"
-MAX_MONEY_P995_JSON = DATAFILES_DIR / "max_money_p995.json"  # 新增方案A輸出檔
 EXCHANGE_JSON = DATAFILES_DIR / "exchange_rate.json"
-
-def fetch_historical_rate(base: str, target: str, start_date: str, end_date: str, api_key: str = None) -> float:
-    """
-    從外部 API 抓取 base → target 匯率的歷史平均值（期間內每日值平均）。
-    回傳該期間平均匯率 (target / base)。
-    """
-    # 這裡我們用一個簡易 API 呼叫範例 — 可依你選擇的服務做修改
-    url = f"https://api.exchangeratesapi.io/history?base={base}&symbols={target}&start_at={start_date}&end_at={end_date}"
-    if api_key:
-        url += f"&access_key={api_key}"
-    resp = requests.get(url)
-    resp.raise_for_status()
-    data = resp.json().get("rates", {})
-    vals = []
-    for dt, day_rates in data.items():
-        if target in day_rates:
-            vals.append(day_rates[target])
-    if not vals:
-        raise RuntimeError(f"No rate data for {base}->{target} between {start_date} and {end_date}")
-    return sum(vals) / len(vals)
 
 # ======== 原有：99.9 分位數 ========
 def compute_currency_max(save_path=MAX_MONEY_JSON, quantile=0.999):
@@ -92,16 +71,6 @@ def compute_avg_exchange(save_path=EXCHANGE_JSON, avg_year=1, api_key=None):
         json.dump(exchange_avg, f, indent=2, ensure_ascii=False)
 
     print(f"✅ 匯率平均計算完成，共 {len(exchange_avg)} 種幣別，已儲存至 {save_path}")
-
-
-# ======== 新增方案A：99.5 分位數 ========
-def compute_currency_max_p995(save_path=MAX_MONEY_P995_JSON):
-    """
-    方案A：以 99.5 分位數作為每種幣別的最大金額基準
-    避免極端交易影響，適合金流模型標準化
-    """
-    return compute_currency_max(save_path=save_path, quantile=0.95)
-
 
 # ======== normalize 函式 (不變) ========
 def normalize_log1p(x, curr_list, GLOBAL_CURRENCY_MAX):
@@ -184,12 +153,9 @@ if __name__ == "__main__":
     test_c = ["USD", "USD", "USD", "USD", "USD", "USD"]
     ideal_n = [0.01, 0.05, 0.25, 0.45]
     """
-    with open(MAX_MONEY_P995_JSON, "r", encoding="utf-8") as f:
-        GLOBAL_CURRENCY_MAX = json.load(f)
 
     with open(EXCHANGE_JSON, "r", encoding="utf-8") as f:
         global_exchange = json.load(f)
-    print(f'\nGLOBAL_CURRENCY_MAX (99.5分位) = {GLOBAL_CURRENCY_MAX}')
     
     normed = normalize_money(test_x, test_c, global_exchange)
     print("\n📊 測試 normalize_log1p 輸出 (方案A)：")

@@ -79,7 +79,7 @@ class TransactionDataset(Dataset):
 # ========= DATALOADER =========
 def get_dataloader(npz_path, batch_size=64, shuffle=True, device="cpu"):
     dataset = TransactionDataset(npz_path, device=device)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=True)
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=False)
     return loader
 
 

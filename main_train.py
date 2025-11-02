@@ -1,3 +1,8 @@
+"""
+main_train.py
+主要訓練程式碼
+"""
+
 import os, json, argparse, random, numpy as np, time, itertools
 import torch
 import torch.nn as nn
@@ -117,7 +122,7 @@ def main(args):
     # -------------------------------------------
     # Example: from model import YourModel
     from model import TransactionTransformer
-    model = TransactionTransformer(input_dim=16).to(device)
+    model = TransactionTransformer(input_dim=10).to(device)
 
     if args.ckpt and os.path.exists(args.ckpt):
         model.load_state_dict(torch.load(args.ckpt, map_location=device))
@@ -178,18 +183,14 @@ def main(args):
 # =====================
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--train_json", required=True)
-    p.add_argument("--val_json", required=True)
-    p.add_argument("--test_json", required=True)
-    p.add_argument("--output_dir", default="./checkpoints")
+    p.add_argument("--train_json", default="analyze_UI/cache/train.npz")
+    p.add_argument("--val_json", default="analyze_UI/cache/test.npz")
+    p.add_argument("--test_json", default="analyze_UI/cache/test.npz")
+    p.add_argument("--output_dir", default="checkpoints/transformer")
     p.add_argument("--ckpt", default=None)
-    p.add_argument("--labels", required=True, help="Comma-separated labels, e.g. A,B,C,D")
-    p.add_argument("--epochs", type=int, default=30)
-    p.add_argument("--batch_size", type=int, default=8)
+    p.add_argument("--epochs", type=int, default=2)
+    p.add_argument("--batch_size", type=int, default=16)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--V_max", type=float, default=0)
-    p.add_argument("--I_max", type=float, default=0)
-    p.add_argument("--normalized", type=bool, default=False)
     args = p.parse_args()
     main(args)
