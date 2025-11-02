@@ -1,3 +1,8 @@
+"""
+model.py
+模型架構設計
+"""
+
 import torch
 import torch.nn as nn
 import math
@@ -51,7 +56,7 @@ class TransactionTransformer(nn.Module):
 
         # ===== Input projection =====
         # 加上兩個 embedding 的維度
-        total_input_dim = input_dim + embed_dim_channel + embed_dim_currency
+        total_input_dim = input_dim + embed_dim_channel + embed_dim_currency - 2
         self.input_proj = nn.Linear(total_input_dim, hidden_dim)
 
         self.pos_encoder = PositionalEncoding(hidden_dim)
