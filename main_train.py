@@ -130,7 +130,8 @@ def main(args):
 
     # Prepare output dir
     timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-    output_dir = os.path.join(args.output_dir, timestamp)
+    output_dir = f"{args.output_dir}/sample_{args.Sample}_seq_{args.Sequence}_layers_{args.num_layers}_{timestamp}"
+
     os.makedirs(f"{output_dir}/ckpt", exist_ok=True)
     os.makedirs(f"{output_dir}/plots", exist_ok=True)
 
@@ -161,7 +162,10 @@ def main(args):
     # -------------------------------------------
     # Example: from model import YourModel
     from model import TransactionTransformer
-    model = TransactionTransformer(input_dim=10).to(device)
+    model = TransactionTransformer(input_dim=10, num_layers=args.num_layers).to(device)
+    log_file.write("======================================== Model ======================================== \n")
+    log_file.write(str(model))  # ✅ 轉為字串
+    log_file.write("\n ======================================================================================= \n\n")
 
     if args.ckpt and os.path.exists(args.ckpt):
         model.load_state_dict(torch.load(args.ckpt, map_location=device))
@@ -248,7 +252,7 @@ def main(args):
     val_output_csv = f"{output_dir}/val_inf.csv"
     run_inference(model, args.val_npz, val_output_csv, device=device)
 
-    test_output_csv = f"{output_dir}/Esun_inf.csv"
+    test_output_csv = f"{output_dir}/sample_{args.Sample}_seq_{args.Sequence}.csv"
     run_inference(model, args.test_npz, test_output_csv, device=device)
     
     print(f"✅ 推論完成，結果已儲存至: {test_output_csv}")
@@ -263,8 +267,11 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--train_npz", default="datasets/initial_competition/sample_20000_seq_len_50/train.npz")
     p.add_argument("--val_npz", default="datasets/initial_competition/sample_20000_seq_len_50/val.npz")
-    p.add_argument("--test_npz", default="datasets/initial_competition/sample_20000_seq_len_50/Esun_test.npz")
+    p.add_argument("--test_npz", default="datasets/initial_competition/Esun_test.npz")
     p.add_argument("--output_dir", default="checkpoints/transformer")
+    p.add_argument("--num_layers", type=int, default=3)
+    p.add_argument("--Sample", type=int, default=20000)
+    p.add_argument("--Sequence", type=int, default=50)
     p.add_argument("--ckpt", default=None)
     p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--batch_size", type=int, default=16)

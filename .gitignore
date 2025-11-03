@@ -4,3 +4,4 @@ analyze_UI/cache/
 compal_analyze_data.py
 __pycache__/
 checkpoints/
+checkpoints.zip

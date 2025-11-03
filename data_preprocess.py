@@ -28,6 +28,7 @@ EXCHANGE_JSON = DATAFILES_DIR / "exchange_rate.json"
 SAMPLE_SIZE = 4000
 SEQ_LEN = 50
 DATA_DIR = f"datasets/initial_competition/sample_{SAMPLE_SIZE}_seq_len_{SEQ_LEN}"
+os.makedirs(DATA_DIR, exist_ok=True)
 TRAIN_JSON = f"{DATA_DIR}/train.json"
 VAL_JSON = f"{DATA_DIR}/val.json"
 TEST_JSON = "datasets/initial_competition/Esun_test.json"
@@ -319,9 +320,6 @@ def main(Train_val_gen=True, Test_gen=True):
         filtered = rank_df[rank_df["avg_txn_per_day"] < 20]
         candidate_accts = set(filtered["acct"].tolist()) - alert_accts - predict_accts
             
-        print(f"✅ 儲存完成: train.json({len(train_data)}) / val.json({len(val_data)})")
-        print("處理時間: %.2f 秒" % (time.time() - start_time))
-
         # --- 建立 bucket 群組 ---
         bucket_groups = {}
         for _, row in filtered.iterrows():
@@ -371,7 +369,7 @@ def main(Train_val_gen=True, Test_gen=True):
             if (i+1) % 200 == 0:
                 elapsed = time.time() - start_time
                 est_total = elapsed / (i+1) * len(alert_accts)
-                print(f"✅ 已完成 {i+1}/{len(alert_accts)} | 預估剩餘: {est_total - elapsed:.1f} 秒")
+                #print(f"✅ 已完成 {i+1}/{len(alert_accts)} | 預估剩餘: {est_total - elapsed:.1f} 秒")
 
         print(f"✅ 警示帳戶處理完成，共 {len(alert_results)} 筆")
 
@@ -397,6 +395,9 @@ def main(Train_val_gen=True, Test_gen=True):
         with open(VAL_JSON, "w") as f:
             json.dump(val_data, f)
                 
+        print(f"✅ 儲存完成: train.json({len(train_data)}) / val.json({len(val_data)})")
+        print("處理時間: %.2f 秒" % (time.time() - start_time))
+
         print("🔄 轉換成 token 序列中... (尚未 embedding)")
         train_tokens, train_masks, train_labels, train_accts = flatten_tokens(train_data, alert_accts)
         val_tokens, val_masks, val_labels, val_accts = flatten_tokens(val_data, alert_accts)
@@ -452,6 +453,6 @@ def main(Train_val_gen=True, Test_gen=True):
         print("Esun_test 處理時間: %.2f 秒" % (time.time() - start_time))
 
 if __name__ == "__main__":
+    Train_val_gen = True # True, False
     Test_gen = False  # True, False
-    Train_val_gen = True
     main(Train_val_gen, Test_gen)
