@@ -53,7 +53,7 @@ if __name__ == "__main__":
 
     model_path = "checkpoints/transformer/latest_model.pth"
     val_path = f"{DATA_DIR}/val.npz"
-    test_path = f"{DATA_DIR}/Esun_test.npz"
+    test_path = f"datasets/initial_competition/Esun_test.npz"
     val_output_csv = f"{OUTPUT_DIR}/val_inf.csv"
     test_output_csv = f"{OUTPUT_DIR}/Esun_inf.csv"
 
