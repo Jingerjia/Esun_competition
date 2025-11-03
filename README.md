@@ -6,31 +6,7 @@
 
 整體運作方式如下：
 
----
-
-## 📁 專案結構概要
-
-project_root/
-│
-├─ analyze_UI/
-│ ├─ preprocess_cache.py # 預處理模組（生成 cache 資料）
-│ ├─ acct_ui.py # 資料分析與可視化 UI
-│ └─ cache/ # 自動生成的中繼資料與訓練檔案
-│
-├─ datafiles/ # 匯率、金額上限、原始資料等輔助資料
-│
-├─ main_train_model.sh # 訓練 shell 檔
-├─ data_preprocess.py # 主資料轉換與儲存程序
-
-├─ main_train.py # 訓練流程（包含訓練、驗證、測試、繪圖等）
-├─ model.py# Transformer 模型架構
-└─  dataloader # 自訂 Dataset 與 DataLoader
-
----
-
-## 🚀 流程步驟說明
-
-### 1️⃣ `analyze_UI/preprocess_cache.py`
+### 1️⃣ `analyze_UI/preprocess_cache.py`、`analyze_UI/acct_data.py`
 
 > 功能：生成預處理所需的中繼資料
 > 
@@ -66,13 +42,13 @@ project_root/
 
 ⚙️ **輸入：**
 
-- 由 `preprocess_cache.py` 產生的資料。
+- 由 `preprocess_cache.py`、`acct_data.py` 產生的資料與圖表。
 ⚙️ **輸出：**
 - 圖表或表格視覺化結果。
 
 ---
 
-### 3️⃣ `datapreprocess.py`
+### 3️⃣ `data_preprocess.py`
 
 > 功能：資料轉換與訓練資料生成
 > 
@@ -85,13 +61,14 @@ project_root/
 - 將交易資料轉換成固定長度序列；
 - 特徵化（如時間 embedding、金額標準化、幣別索引化）；
 - 生成訓練所需的：
-    - `train.json` / `test.json`
-    - `train.npz` / `test.npz`
+    - `train.json` / `val.json` / `Esun_test.json`
+    - `train.npz` / `val.npz` / `Esun_test.npz`
 
 ⚙️ **輸出：**
 
-- `analyze_UI/cache/train.npz`
-- `analyze_UI/cache/test.npz`
+- `datasets/initial_competition/kind_dir/train.npz`
+- `datasets/initial_competition/kind_dir/val.npz`
+- `datasets/initial_competition/kind_dir/Esun_test.npz`
 
 這兩個檔案即是訓練模型時使用的資料來源。
 
@@ -127,6 +104,7 @@ project_root/
 
 ```bash
 python analyze_UI/preprocess_cache.py
+python analyze_UI/acct_data.py
 ```
 
 2️⃣ 檢視分析結果（可選）：
@@ -138,8 +116,10 @@ python analyze_UI/acct_ui.py
 3️⃣ 產生訓練資料：
 
 ```bash
-python datapreprocess.py
+python data_preprocess.py
 ```
 
 4️⃣ 訓練模型：
-python mainchain.py
+```bash
+python main_train.py
+```
