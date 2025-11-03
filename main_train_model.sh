@@ -1,6 +1,13 @@
+SAMPLE=20000
+SEQ_LEN=50
+DATA_DIR=datasets/initial_competition/sample_${SAMPLE}_seq_len_${SEQ_LEN}
+
 python main_train.py \
-  --train_json analyze_UI/cache/train.npz \
-  --val_json analyze_UI/cache/val.npz \
-  --test_json analyze_UI/cache/val.npz \
+  --train_npz $DATA_DIR/train.npz \
+  --val_npz $DATA_DIR/val.npz \
+  --test_npz $DATA_DIR/Esun_test.npz \
   --output_dir checkpoints/transformer \
-  --epochs 100 --batch_size 16 --lr 1e-4
+  --lr 1e-4 \
+  --seed 42 \
+  --epochs 100 \
+  --batch_size 16
