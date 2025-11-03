@@ -9,9 +9,11 @@ import numpy as np
 from pathlib import Path
 
 # ========= CONFIG =========
-CACHE_DIR = Path("analyze_UI/cache")
-TRAIN_NPZ = CACHE_DIR / "train.npz"
-TEST_NPZ = CACHE_DIR / "test.npz"
+SAMPLE_SIZE = 20000
+SEQ_LEN = 50
+DATA_DIR = Path(f"datasets/initial_competition/sample_{SAMPLE_SIZE}_seq_len_{SEQ_LEN}")
+TRAIN_NPZ = DATA_DIR / "train.npz"
+TEST_NPZ = DATA_DIR / "test.npz"
 
 # embedding 維度設定
 EMBED_DIM_CHANNEL = 4
@@ -35,7 +37,6 @@ class TransactionDataset(Dataset):
         self.mask = torch.tensor(data["mask"], dtype=torch.int8)
         self.labels = torch.tensor(data["label"], dtype=torch.int64)
         self.accts = data["acct"]
-        self.device = device
 
         # 解析出可學 embedding 的欄位
         # channel 在 tokens[:, :, 4]，currency 在 tokens[:, :, 5]
@@ -67,11 +68,11 @@ class TransactionDataset(Dataset):
 
         # 不嵌入，只回傳 index
         return {
-            "x": x_before.to(self.device),    # (T, feature_dim_without_embed)
-            "ch_idx": ch_idx.to(self.device), # (T,)
-            "cu_idx": cu_idx.to(self.device), # (T,)
-            "mask": m.to(self.device),
-            "label": y.to(self.device),
+            "x": x_before,    # (T, feature_dim_without_embed)
+            "ch_idx": ch_idx, # (T,)
+            "cu_idx": cu_idx, # (T,)
+            "mask": m,
+            "label": y,
             "acct": self.accts[idx]
         }
 
