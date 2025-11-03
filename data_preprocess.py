@@ -25,12 +25,12 @@ DATAFILES_DIR = Path("datafiles")
 MAX_MONEY_JSON = DATAFILES_DIR / "max_money.json"
 EXCHANGE_JSON = DATAFILES_DIR / "exchange_rate.json"
 
-SAMPLE_SIZE = 20000
+SAMPLE_SIZE = 4000
 SEQ_LEN = 50
 DATA_DIR = f"datasets/initial_competition/sample_{SAMPLE_SIZE}_seq_len_{SEQ_LEN}"
-TRAIN_JSON = DATA_DIR / "train.json"
-VAL_JSON = DATA_DIR / "val.json"
-TEST_JSON = DATA_DIR / "Esun_test.json"
+TRAIN_JSON = f"{DATA_DIR}/train.json"
+VAL_JSON = f"{DATA_DIR}/val.json"
+TEST_JSON = "datasets/initial_competition/Esun_test.json"
 
 GLOBAL_CHANNELS = ["PAD", "01", "02", "03", "04", "05", "06", "07", "99", "UNK"]
 CHANNEL_CODE = [-1, 1, 2, 3, 4, 5, 6, 7, 8, 0]
@@ -445,13 +445,13 @@ def main(Train_val_gen=True, Test_gen=True):
         print("🔄 轉換成 token 序列中... (尚未 embedding)")
         test_tokens, test_masks, test_labels, test_accts = flatten_tokens(test_results, alert_accts)
             
-        np.savez(DATA_DIR / "Esun_test.npz",
+        np.savez("datasets/initial_competition/Esun_test.npz",
                 tokens=test_tokens, mask=test_masks, label=test_labels, acct=test_accts)
         print(f"✅ 儲存完成: test.npz ({test_tokens.shape})")
 
         print("Esun_test 處理時間: %.2f 秒" % (time.time() - start_time))
 
 if __name__ == "__main__":
-    Test_gen = True
+    Test_gen = False  # True, False
     Train_val_gen = True
     main(Train_val_gen, Test_gen)
