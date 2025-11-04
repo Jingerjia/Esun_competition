@@ -54,12 +54,14 @@ def evaluate(model, dataloader, device):
     with torch.no_grad():
         for batch in dataloader:
             y = batch["label"].cpu().numpy().tolist()
+            y = [1 if val == 1 else 0 for val in y]
+            # print(y)
             logits = model(batch["x"].to(device), batch["ch_idx"].to(device), batch["cu_idx"].to(device))
             prob = torch.sigmoid(logits).cpu().numpy().flatten()
             pred = (prob > 0.5).astype(int).tolist()
             preds += pred
-            trues += y
-
+            trues += y 
+            
     acc = np.mean(np.array(preds) == np.array(trues)) * 100
     f1_alert = f1_score(trues, preds, pos_label=1)
     prec_alert = precision_score(trues, preds, pos_label=1)
@@ -121,12 +123,62 @@ def plot_metrics(epochs, train_accs, val_accs, train_f1s, val_f1s, save_path, tr
 
 
 # =====================
+#  Utils: Label 檢查
+# =====================
+def check_label_distribution(dataloader):
+    """
+    檢查 dataloader 中的標籤分佈狀況。
+    - 印出各種 label 的出現次數與比例
+    - 偵測 NaN 或超出 [0,1] 的異常值
+    """
+    import numpy as np
+    print("🔍 檢查訓練資料標籤分佈中...")
+
+    all_labels = []
+    for batch in dataloader:
+        y = batch["label"].detach().cpu().numpy().flatten()
+        all_labels.extend(y)
+
+    all_labels = np.array(all_labels)
+    unique, counts = np.unique(all_labels, return_counts=True)
+    label_stats = dict(zip(unique, counts))
+
+    print("✅ Label 統計結果:")
+    for val, cnt in label_stats.items():
+        print(f"   label={val:.2f}: {cnt} samples ({cnt/len(all_labels)*100:.2f}%)")
+
+    has_nan = np.any(np.isnan(all_labels))
+    has_outlier = np.any((all_labels < 0) | (all_labels > 1))
+
+    if has_nan or has_outlier:
+        print("⚠️ 發現異常標籤值：")
+        if has_nan:
+            print("   - 存在 NaN 標籤")
+        if has_outlier:
+            print("   - 有標籤超出 [0, 1] 範圍")
+        raise ValueError("❌ 標籤資料異常，請檢查 clustering 或 npz 檔案內容！")
+
+    print("------------------------------------------------------\n")
+
+
+# =====================
 #  Main Training Flow
 # =====================
 def main(args):
     start_time = time.time()
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    cluster_npz = args.train_npz.replace(".npz", f"_cluster.npz")
+    if not args.use_cluster:
+        print("跳過 clustering，直接使用原始標籤資料。")
+    elif os.path.exists(cluster_npz):
+        args.train_npz = cluster_npz
+        print("使用 clustering 產生的 soft labels")
+        print(f"training data path: {args.train_npz}")
+    else:
+        print(f"檔案 {cluster_npz} 不存在")
+        print("跳過 clustering，直接使用原始標籤資料。")
 
     # Prepare output dir
     timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
@@ -155,7 +207,8 @@ def main(args):
     train_dl = get_dataloader(args.train_npz, batch_size=args.batch_size, shuffle=True, device=device)
     val_dl   = get_dataloader(args.val_npz, batch_size=args.batch_size, shuffle=False, device=device)
     test_dl  = get_dataloader(args.test_npz, batch_size=args.batch_size, shuffle=False, device=device)
-
+    
+    check_label_distribution(train_dl)
 
     # -------------------------------------------
     # Model Setup (User-defined model)
@@ -215,6 +268,7 @@ def main(args):
     # -------------------------------------------
     # After training: Evaluation & Plots
     # -------------------------------------------
+    print("繪圖中...")
     plot_metrics(range(1, args.epochs+1), train_accs, val_accs, train_f1s, val_f1s, os.path.join(output_dir, "plots"), train_losses)
 
     # Reload best model
@@ -229,6 +283,7 @@ def main(args):
     prec = precision_score(trues, preds, average=None, labels=range(len(labels)))
     rec = recall_score(trues, preds, average=None, labels=range(len(labels)))
     f1 = f1_score(trues, preds, average=None, labels=range(len(labels)))
+    print("生成log_file")
     for i, l in enumerate(labels):
         log_file.write(f"{l}\tP={prec[i]:.3f}\tR={rec[i]:.3f}\tF1={f1[i]:.3f}\n")
 
@@ -277,5 +332,6 @@ if __name__ == "__main__":
     p.add_argument("--batch_size", type=int, default=16)
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--use_cluster", action="store_true", help="是否先用 clustering 產生 soft label")
     args = p.parse_args()
     main(args)

@@ -14,6 +14,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from tqdm import tqdm
+import argparse
 
 # ========= CONFIG =========
 GLOBAL_AMT_MAX = None  # 之後由統計結果或設定檔讀入
@@ -24,14 +25,6 @@ INDEX_JSON = CACHE_DIR / "account_index.json"
 DATAFILES_DIR = Path("datafiles")
 MAX_MONEY_JSON = DATAFILES_DIR / "max_money.json"
 EXCHANGE_JSON = DATAFILES_DIR / "exchange_rate.json"
-
-SAMPLE_SIZE = 4000
-SEQ_LEN = 50
-DATA_DIR = f"datasets/initial_competition/sample_{SAMPLE_SIZE}_seq_len_{SEQ_LEN}"
-os.makedirs(DATA_DIR, exist_ok=True)
-TRAIN_JSON = f"{DATA_DIR}/train.json"
-VAL_JSON = f"{DATA_DIR}/val.json"
-TEST_JSON = "datasets/initial_competition/Esun_test.json"
 
 GLOBAL_CHANNELS = ["PAD", "01", "02", "03", "04", "05", "06", "07", "99", "UNK"]
 CHANNEL_CODE = [-1, 1, 2, 3, 4, 5, 6, 7, 8, 0]
@@ -161,10 +154,10 @@ def process_account(acct, meta, index_info, global_exchange):
     start, end = index_info['start'], index_info['end']
     df = pd.read_csv(file_path).iloc[start:end].reset_index(drop=True)
     # 僅取最後 50 筆
-    df = df.tail(SEQ_LEN).reset_index(drop=True)
+    df = df.tail(seq_len).reset_index(drop=True)
 
     # 填補 padding
-    pad_len = SEQ_LEN - len(df)
+    pad_len = seq_len - len(df)
     if pad_len > 0:
         pad = pd.DataFrame([{
             'txn_amt': 0,
@@ -286,7 +279,12 @@ def process_account(acct, meta, index_info, global_exchange):
 
 # ========= MAIN PIPELINE =========
 
-def main(Train_val_gen=True, Test_gen=True):
+def main(Train_val_gen=True, Test_gen=True, samples=1000, seq_len=50, data_dir=Path("")):
+
+    TRAIN_JSON = f"{data_dir}/train.json"
+    VAL_JSON = f"{data_dir}/val.json"
+    TEST_JSON = "datasets/initial_competition/Esun_test.json"
+
     start_time = time.time()
     print("🔍 載入帳號分類資訊...")
 
@@ -334,13 +332,13 @@ def main(Train_val_gen=True, Test_gen=True):
         total_count = sum(len(v) for v in bucket_groups.values())
         for b, accts in bucket_groups.items():
             p = len(accts) / total_count
-            n = max(50, int(SAMPLE_SIZE * p))
+            n = max(50, int(samples * p))
             sampled_accts.extend(random.sample(accts, min(n, len(accts))))
         print(f"分層抽樣完成，共取 {len(sampled_accts)} 筆帳戶 (覆蓋 {len(bucket_groups)} 個 bucket)")
 
         # 取樣 2萬筆
-        if len(sampled_accts) > SAMPLE_SIZE:
-            sampled_accts = random.sample(sampled_accts, SAMPLE_SIZE)
+        if len(sampled_accts) > samples:
+            sampled_accts = random.sample(sampled_accts, samples)
         print(f"隨機抽樣帳戶數: {len(sampled_accts)}")
 
         # 處理帳戶資料
@@ -402,9 +400,9 @@ def main(Train_val_gen=True, Test_gen=True):
         train_tokens, train_masks, train_labels, train_accts = flatten_tokens(train_data, alert_accts)
         val_tokens, val_masks, val_labels, val_accts = flatten_tokens(val_data, alert_accts)
             
-        np.savez(DATA_DIR / "train.npz",
+        np.savez(data_dir / "train.npz",
                 tokens=train_tokens, mask=train_masks, label=train_labels, acct=train_accts)
-        np.savez(DATA_DIR / "val.npz",
+        np.savez(data_dir / "val.npz",
                 tokens=val_tokens, mask=val_masks, label=val_labels, acct=val_accts)
         print(f"✅ 儲存完成: train.npz ({train_tokens.shape}) / val.npz ({val_tokens.shape})")
 
@@ -452,7 +450,39 @@ def main(Train_val_gen=True, Test_gen=True):
 
         print("Esun_test 處理時間: %.2f 秒" % (time.time() - start_time))
 
+# if __name__ == "__main__":
+    # Train_val_gen = True # True, False
+    # Test_gen = False  # True, False
+    # main(Train_val_gen, Test_gen)
+    
 if __name__ == "__main__":
-    Train_val_gen = True # True, False
-    Test_gen = False  # True, False
-    main(Train_val_gen, Test_gen)
+    parser = argparse.ArgumentParser(description="Data preprocessing pipeline for Esun competition")
+
+    # ✅ 可調整的參數
+    parser.add_argument("--sample_size", type=int, default=4000, help="抽樣帳戶數量")
+    parser.add_argument("--seq_len", type=int, default=50, help="每帳戶序列長度")
+    parser.add_argument("--data_dir", type=str, help="每帳戶序列長度")
+    parser.add_argument("--seed", type=int, help="random seed")
+    parser.add_argument("--train_val_gen", action="store_true", help="是否生成 train/val 資料")
+    parser.add_argument("--test_gen", action="store_true", help="是否生成 test 資料")
+
+    args = parser.parse_args()
+    
+
+    # 將 argparse 傳入的值更新全域變數
+    seed = args.seed    
+    samples = args.sample_size
+    seq_len = args.seq_len
+    Train_val_gen = args.train_val_gen
+    Test_gen = args.test_gen
+    
+    # 設定隨機變數seed
+    random.seed(seed)
+    np.random.seed(seed)
+
+    # 重新定義資料路徑（依照參數動態命名）
+    data_dir = Path(args.data_dir)
+    os.makedirs(data_dir, exist_ok=True)
+
+    # 執行主流程
+    main(Train_val_gen=Train_val_gen, Test_gen=Test_gen, samples=samples, seq_len=seq_len, data_dir=data_dir)

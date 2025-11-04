@@ -35,7 +35,7 @@ class TransactionDataset(Dataset):
         data = np.load(npz_path, allow_pickle=True)
         self.tokens = torch.tensor(data["tokens"], dtype=torch.float32)
         self.mask = torch.tensor(data["mask"], dtype=torch.int8)
-        self.labels = torch.tensor(data["label"], dtype=torch.int64)
+        self.labels = torch.tensor(data["label"], dtype=torch.float32)
         self.accts = data["acct"]
 
         # 解析出可學 embedding 的欄位
