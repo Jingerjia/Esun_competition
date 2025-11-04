@@ -6,6 +6,7 @@ SEQ_LEN=50
 GENERATE_ANYWAY=FALSE
 EPOCHS=100
 CLUSTERS=8
+LABEL_THRESHOLD=0.3
 CLUSTER_ANYWAY=FALSE
 CLUSTERING_METHOD=kmeans
 SEED=42
@@ -44,7 +45,8 @@ if [ "${DO_CLUSTERING}" = "TRUE" ]; then
 	  --input_npz ${TRAIN_NPZ} \
 	  --n_clusters ${CLUSTERS} \
 	  --method ${CLUSTERING_METHOD} \
-	  --batch_size 128
+	  --batch_size 128 \
+	  --threshold ${LABEL_THRESHOLD}
 	fi
 
 

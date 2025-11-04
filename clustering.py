@@ -80,7 +80,7 @@ def plot_cluster_scatter(X, cluster_ids, labels, save_path="cluster_scatter.png"
     df.to_csv(points_csv, index=False, encoding="utf-8-sig")
 
 
-def cluster_with_dataloader(input_npz, n_clusters=10, method="gmm", batch_size=128):
+def cluster_with_dataloader(input_npz, n_clusters=10, method="gmm", batch_size=128, threshold="0.6"):
     """
     直接從 dataloader 讀取 npz 檔案資料進行 clustering
     並對與 label=1 同群的樣本給 soft_label=0.5
@@ -112,7 +112,7 @@ def cluster_with_dataloader(input_npz, n_clusters=10, method="gmm", batch_size=1
         # if cluster_ids[i] in pos_clusters and new_labels[i] == 0:
             # new_labels[i] = 0.5  # 半正樣本
             
-    threshold = 0.6  # 比例閾值，可自行調整
+    # 比例閾值，可自行調整
     for c in np.unique(cluster_ids):
         cluster_mask = (cluster_ids == c)
         cluster_labels = labels[cluster_mask]
@@ -150,11 +150,13 @@ if __name__ == "__main__":
     p.add_argument("--n_clusters", type=int, default=10)
     p.add_argument("--method", choices=["gmm", "kmeans"], default="gmm")
     p.add_argument("--batch_size", type=int, default=128)
+    p.add_argument("--threshold", type=float, default=0.6)
     args = p.parse_args()
 
     cluster_with_dataloader(
         input_npz=args.input_npz,
         n_clusters=args.n_clusters,
         method=args.method,
-        batch_size=args.batch_size
+        batch_size=args.batch_size,
+        threshold=args.threshold
     )
