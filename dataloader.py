@@ -47,6 +47,11 @@ class TransactionDataset(Dataset):
         self.channel_emb = torch.nn.Embedding(NUM_CHANNELS, EMBED_DIM_CHANNEL, padding_idx=0)
         self.currency_emb = torch.nn.Embedding(NUM_CURRENCIES, EMBED_DIM_CURRENCY, padding_idx=0)
 
+        # debug 用：顯示 label 範圍
+        print(f"npz_path = {npz_path}")
+        print(f"self.labels.min = {self.labels.min().item()}")
+        print(f"self.labels.max = {self.labels.max().item()}")
+
     def __len__(self):
         return len(self.tokens)
 
@@ -87,6 +92,8 @@ def get_dataloader(npz_path, batch_size=64, shuffle=True, device="cpu"):
 # ========= 測試主程式 =========
 if __name__ == "__main__":
     print("🔍 載入訓練資料...")
+    TRAIN_NPZ = "datasets/initial_competition/predict_data/predict_data_seq_len_50/train.npz"
+    #TRAIN_NPZ = "datasets/initial_competition/predict_data/predict_data_seq_len_50_soft_label_0.3/train.npz"
     train_loader = get_dataloader(TRAIN_NPZ, batch_size=16, shuffle=True)
 
     batch = next(iter(train_loader))

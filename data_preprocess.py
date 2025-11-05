@@ -31,14 +31,9 @@ CHANNEL_CODE = [-1, 1, 2, 3, 4, 5, 6, 7, 8, 0]
 CHANNEL_MAP = {c: i for i, c in zip(CHANNEL_CODE, GLOBAL_CHANNELS)}
 
 # ========= UTILS =========
-
-
-
-
 def load_rank_csv(path):
     df = pd.read_csv(path)
     return set(df['acct'].astype(str).tolist())
-
 
 # --- 定義交易筆數 bucket ---
 def bucket_txn_count(n):
@@ -52,8 +47,7 @@ def bucket_txn_count(n):
     elif 101 <= n <= 500: return "b101_500"
     else: return "b500p"
 
-
-def flatten_tokens(dataset, alert_accts):
+def flatten_tokens(dataset, alert_accts, mode="train", soft_label=0.3):
     """
     將帳戶級別資料轉為 (N, 50, 10) tokens
     """
@@ -78,13 +72,24 @@ def flatten_tokens(dataset, alert_accts):
         tokens.append(tok)
         masks.append(r["mask"])
         # 標籤：警示帳戶為1，其餘0
-        label = 1 if r["acct"] in alert_accts else 0
+        if mode == "train" and soft_label > 0:
+            label = 1 if r["acct"] in alert_accts else soft_label
+        else:
+            label = 1 if r["acct"] in alert_accts else 0
+
+
         labels.append(label)
         accts.append(r["acct"])
+
+    if mode == "train" and soft_label > 0:
+        print(f"mode={mode}, soft_label = {soft_label}, use_soft_label")
+    else:
+        print(f"mode={mode}, soft_label = {soft_label}, without_soft_label")
+
     return (
         np.array(tokens, dtype=np.float32),
         np.array(masks, dtype=np.int8),
-        np.array(labels, dtype=np.int8),
+        np.array(labels, dtype=np.float32),
         np.array(accts)
     )
 
@@ -148,16 +153,16 @@ def bucketize(value, bins):
             return i
     return len(bins)
 
-def process_account(acct, meta, index_info, global_exchange):
+def process_account(args, acct, meta, index_info, global_exchange):
     """將單一帳戶資料轉換成模型輸入格式"""
     file_path = DETAILS_DIR / index_info['file']
     start, end = index_info['start'], index_info['end']
     df = pd.read_csv(file_path).iloc[start:end].reset_index(drop=True)
     # 僅取最後 50 筆
-    df = df.tail(seq_len).reset_index(drop=True)
+    df = df.tail(args.seq_len).reset_index(drop=True)
 
     # 填補 padding
-    pad_len = seq_len - len(df)
+    pad_len = args.seq_len - len(df)
     if pad_len > 0:
         pad = pd.DataFrame([{
             'txn_amt': 0,
@@ -279,11 +284,38 @@ def process_account(acct, meta, index_info, global_exchange):
 
 # ========= MAIN PIPELINE =========
 
-def main(Train_val_gen=True, Test_gen=True, samples=1000, seq_len=50, data_dir=Path("")):
+def main(args):
 
-    TRAIN_JSON = f"{data_dir}/train.json"
-    VAL_JSON = f"{data_dir}/val.json"
-    TEST_JSON = "datasets/initial_competition/Esun_test.json"
+    # 將 argparse 傳入的值更新全域變數
+    seed = args.seed    
+    samples = args.sample_size
+    seq_len = args.seq_len
+    
+    # 設定隨機變數seed
+    random.seed(seed)
+    np.random.seed(seed)
+
+    # 自動建立資料資料夾（依 sample_size、seq_len、soft_label 命名）
+    if args.predict_data:
+        sample_dir = f'predict_data'
+    else:
+        sample_dir = f'sample_{args.sample_size}'
+
+    if args.soft_label > 0:
+        data_dir = Path(f"datasets/initial_competition/{sample_dir}/{sample_dir}_seq_len_{args.seq_len}_soft_label_{args.soft_label}")
+    else:
+        data_dir = Path(f"datasets/initial_competition/{sample_dir}/{sample_dir}_seq_len_{args.seq_len}")
+
+    json_dir = Path(f"datasets/initial_competition/{sample_dir}/{sample_dir}_seq_len_{args.seq_len}")
+    test_dir = f"datasets/initial_competition/Esun_test"
+    os.makedirs(json_dir, exist_ok=True)
+    os.makedirs(test_dir, exist_ok=True)
+    os.makedirs(data_dir, exist_ok=True)
+
+    TRAIN_JSON = f"{json_dir}/train.json"
+    VAL_JSON = f"{json_dir}/val.json"
+    TEST_JSON = f"datasets/initial_competition/Esun_test/Esun_test_seq_{seq_len}.json"
+    TEST_NPZ = f"datasets/initial_competition/Esun_test/Esun_test_seq_{seq_len}.npz"
 
     start_time = time.time()
     print("🔍 載入帳號分類資訊...")
@@ -305,128 +337,151 @@ def main(Train_val_gen=True, Test_gen=True, samples=1000, seq_len=50, data_dir=P
     with open(INDEX_JSON, "r") as f:
         meta = json.load(f)
     index_map = meta["index"]
-
-    if Train_val_gen:
-
-        # 篩選訓練帳戶
-        candidate_accts = list(yu_accts - alert_accts - predict_accts)
-        print(f"可用非警示玉山帳戶數: {len(candidate_accts)}")
-
-        # 篩選每日平均交易量 < 20
-        rank_df = pd.read_csv(RANK_DIR / "rank_玉山帳戶_交易筆數_asc.csv")
-        rank_df["avg_txn_per_day"] = rank_df["total_txn_count"] / rank_df["day_span"]
-        filtered = rank_df[rank_df["avg_txn_per_day"] < 20]
-        candidate_accts = set(filtered["acct"].tolist()) - alert_accts - predict_accts
-            
-        # --- 建立 bucket 群組 ---
-        bucket_groups = {}
-        for _, row in filtered.iterrows():
-            acct = row["acct"]
-            if acct in alert_accts or acct in predict_accts:
-                continue
-            b = bucket_txn_count(row["total_txn_count"])
-            bucket_groups.setdefault(b, []).append(acct)
-
-        # --- 分層抽樣，每個 bucket 至少取 50 筆 ---
-        sampled_accts = []
-        total_count = sum(len(v) for v in bucket_groups.values())
-        for b, accts in bucket_groups.items():
-            p = len(accts) / total_count
-            n = max(50, int(samples * p))
-            sampled_accts.extend(random.sample(accts, min(n, len(accts))))
-        print(f"分層抽樣完成，共取 {len(sampled_accts)} 筆帳戶 (覆蓋 {len(bucket_groups)} 個 bucket)")
-
-        # 取樣 2萬筆
-        if len(sampled_accts) > samples:
-            sampled_accts = random.sample(sampled_accts, samples)
-        print(f"隨機抽樣帳戶數: {len(sampled_accts)}")
-
-        # 處理帳戶資料
-        results = []
-        for i, acct in enumerate(tqdm(sampled_accts[:], desc="轉換中...")):
-            if acct not in index_map:
-                continue
-            res = process_account(acct, meta, index_map[acct], global_exchange)
-            # 記錄帳戶所屬 bucket
-            txn_cnt = int(rank_df.loc[rank_df["acct"] == acct, "total_txn_count"].values[0])
-            res["bucket"] = bucket_txn_count(txn_cnt)
-            results.append(res)
-
-        # === 處理警示帳戶 ===
-        print("\n⚠️ 開始處理警示帳戶...")
-        alert_results = []
-        alert_rank_df = pd.read_csv(RANK_DIR / "rank_警示帳戶_交易筆數_asc.csv")
-
-        for i, acct in enumerate(tqdm(alert_accts, desc="轉換警示帳戶中...")):
-            if acct not in index_map:
-                continue
-            res = process_account(acct, meta, index_map[acct], global_exchange)
-            txn_cnt = int(alert_rank_df.loc[alert_rank_df["acct"] == acct, "total_txn_count"].values[0])
-            res["bucket"] = bucket_txn_count(txn_cnt)
-            alert_results.append(res)
-            if (i+1) % 200 == 0:
-                elapsed = time.time() - start_time
-                est_total = elapsed / (i+1) * len(alert_accts)
-                #print(f"✅ 已完成 {i+1}/{len(alert_accts)} | 預估剩餘: {est_total - elapsed:.1f} 秒")
-
-        print(f"✅ 警示帳戶處理完成，共 {len(alert_results)} 筆")
-
-        # --- 合併一般帳戶與警示帳戶 ---
-        all_results = results + alert_results
-
-        # 分割 train/val
-        # --- 分層切分 (每個 bucket 各自 9:1) ---
-        train_data, val_data = [], []
-        from collections import defaultdict
-        bucket_map = defaultdict(list)
-        for r in all_results:
-            bucket_map[r["bucket"]].append(r)
-
-        for b, items in bucket_map.items():
-            random.shuffle(items)
-            split_idx = int(len(items) * 0.9)
-            train_data.extend(items[:split_idx])
-            val_data.extend(items[split_idx:])
-
-        with open(TRAIN_JSON, "w") as f:
-            json.dump(train_data, f)
-        with open(VAL_JSON, "w") as f:
-            json.dump(val_data, f)
+    
+    if not os.path.exists(data_dir / "train.npz") or not os.path.exists(data_dir / "val.npz"):
+    # 篩選訓練帳戶
+        if not os.path.exists(TRAIN_JSON) or not os.path.exists(VAL_JSON):
+            candidate_accts = list(yu_accts - alert_accts - predict_accts)
+            print(f"可用非警示玉山帳戶數: {len(candidate_accts)}")
+            print(f'\n未找到{TRAIN_JSON}、{VAL_JSON}')
+            if args.predict_data:
                 
-        print(f"✅ 儲存完成: train.json({len(train_data)}) / val.json({len(val_data)})")
-        print("處理時間: %.2f 秒" % (time.time() - start_time))
+                predict_rank_df = pd.read_csv(RANK_DIR / "rank_待預測帳戶_交易筆數_asc.csv")
+                results = []
+                for i, acct in enumerate(tqdm(predict_accts, desc="轉換待預測帳戶中...")):
+                    if acct not in index_map:
+                        continue
+                    res = process_account(args, acct, meta, index_map[acct], global_exchange)
+                    txn_cnt = int(predict_rank_df.loc[predict_rank_df["acct"] == acct, "total_txn_count"].values[0])
+                    res["bucket"] = bucket_txn_count(txn_cnt)
+                    results.append(res)
+            else:
+                # 篩選每日平均交易量 < 20
+                rank_df = pd.read_csv(RANK_DIR / "rank_玉山帳戶_交易筆數_asc.csv")
+                rank_df["avg_txn_per_day"] = rank_df["total_txn_count"] / rank_df["day_span"]
+                filtered = rank_df[rank_df["avg_txn_per_day"] < 20]
+                candidate_accts = set(filtered["acct"].tolist()) - alert_accts - predict_accts
+                
+                # --- 建立 bucket 群組 ---
+                bucket_groups = {}
+                for _, row in filtered.iterrows():
+                    acct = row["acct"]
+                    if acct in alert_accts or acct in predict_accts:
+                        continue
+                    b = bucket_txn_count(row["total_txn_count"])
+                    bucket_groups.setdefault(b, []).append(acct)
+
+                # --- 分層抽樣，每個 bucket 至少取 50 筆 ---
+                sampled_accts = []
+                total_count = sum(len(v) for v in bucket_groups.values())
+                for b, accts in bucket_groups.items():
+                    p = len(accts) / total_count
+                    n = max(50, int(samples * p))
+                    sampled_accts.extend(random.sample(accts, min(n, len(accts))))
+                print(f"分層抽樣完成，共取 {len(sampled_accts)} 筆帳戶 (覆蓋 {len(bucket_groups)} 個 bucket)")
+
+                # 取樣 2萬筆
+                if len(sampled_accts) > samples:
+                    sampled_accts = random.sample(sampled_accts, samples)
+                print(f"隨機抽樣帳戶數: {len(sampled_accts)}")
+
+                # 處理帳戶資料
+                results = []
+                for i, acct in enumerate(tqdm(sampled_accts[:], desc="轉換中...")):
+                    if acct not in index_map:
+                        continue
+                    res = process_account(args, acct, meta, index_map[acct], global_exchange)
+                    # 記錄帳戶所屬 bucket
+                    txn_cnt = int(rank_df.loc[rank_df["acct"] == acct, "total_txn_count"].values[0])
+                    res["bucket"] = bucket_txn_count(txn_cnt)
+                    results.append(res)
+
+            # === 處理警示帳戶 ===
+            print("\n⚠️ 開始處理警示帳戶...")
+            alert_results = []
+            alert_rank_df = pd.read_csv(RANK_DIR / "rank_警示帳戶_交易筆數_asc.csv")
+
+            for i, acct in enumerate(tqdm(alert_accts, desc="轉換警示帳戶中...")):
+                if acct not in index_map:
+                    continue
+                res = process_account(args, acct, meta, index_map[acct], global_exchange)
+                txn_cnt = int(alert_rank_df.loc[alert_rank_df["acct"] == acct, "total_txn_count"].values[0])
+                res["bucket"] = bucket_txn_count(txn_cnt)
+                alert_results.append(res)
+                if (i+1) % 200 == 0:
+                    elapsed = time.time() - start_time
+                    est_total = elapsed / (i+1) * len(alert_accts)
+                    #print(f"✅ 已完成 {i+1}/{len(alert_accts)} | 預估剩餘: {est_total - elapsed:.1f} 秒")
+
+            print(f"✅ 警示帳戶處理完成，共 {len(alert_results)} 筆")
+
+            # --- 合併一般帳戶與警示帳戶 ---
+            all_results = results + alert_results
+
+            # 分割 train/val
+            # --- 分層切分 (每個 bucket 各自 9:1) ---
+            train_data, val_data = [], []
+            from collections import defaultdict
+            bucket_map = defaultdict(list)
+            for r in all_results:
+                bucket_map[r["bucket"]].append(r)
+
+            for b, items in bucket_map.items():
+                random.shuffle(items)
+                split_idx = int(len(items) * 0.9)
+                train_data.extend(items[:split_idx])
+                val_data.extend(items[split_idx:])
+
+            with open(TRAIN_JSON, "w") as f:
+                json.dump(train_data, f)
+            with open(VAL_JSON, "w") as f:
+                json.dump(val_data, f)
+                    
+            print(f"✅ 儲存完成: train.json({len(train_data)}) / val.json({len(val_data)})")
+            print("處理時間: %.2f 秒" % (time.time() - start_time))
+
+        else:
+            print(f"📂 偵測到已存在的訓練與驗證資料，直接載入: {TRAIN_JSON}、{VAL_JSON}")
+            with open(TRAIN_JSON, "r", encoding="utf-8") as f:
+                train_data = json.load(f)
+            with open(VAL_JSON, "r", encoding="utf-8") as f:
+                val_data = json.load(f)
+            print(f"✅ 已載入 {len(train_data)} 筆訓練資料、{len(val_data)} 筆驗證資料、")
 
         print("🔄 轉換成 token 序列中... (尚未 embedding)")
-        train_tokens, train_masks, train_labels, train_accts = flatten_tokens(train_data, alert_accts)
-        val_tokens, val_masks, val_labels, val_accts = flatten_tokens(val_data, alert_accts)
-            
-        np.savez(data_dir / "train.npz",
-                tokens=train_tokens, mask=train_masks, label=train_labels, acct=train_accts)
-        np.savez(data_dir / "val.npz",
-                tokens=val_tokens, mask=val_masks, label=val_labels, acct=val_accts)
-        print(f"✅ 儲存完成: train.npz ({train_tokens.shape}) / val.npz ({val_tokens.shape})")
+
+        train_tokens, train_masks, train_labels, train_accts = flatten_tokens(train_data, alert_accts, mode="train", soft_label=args.soft_label)
+        np.savez(data_dir / "train.npz", tokens=train_tokens, mask=train_masks, label=train_labels, acct=train_accts)
+        print(f"✅ 儲存完成: train.npz ({train_tokens.shape})")
+
+        val_tokens, val_masks, val_labels, val_accts = flatten_tokens(val_data, alert_accts, mode="val", soft_label=0)   
+        np.savez(data_dir / "val.npz", tokens=val_tokens, mask=val_masks, label=val_labels, acct=val_accts)
+        print(f"✅ 儲存完成: val.npz ({val_tokens.shape})")
 
         print("Train_Val 處理時間: %.2f 秒" % (time.time() - start_time))
-
-    if Test_gen:
+    else:
+        print(f"train.npz 已存在:{data_dir / 'train.npz'}")
+        print(f"val.npz 已存在:{data_dir / 'val.npz'}")
+    
+    if not os.path.exists(TEST_NPZ):
         start_time = time.time()
         if not os.path.exists(TEST_JSON):
             # === 處理待預測帳戶 (test set) ===
-            print("\n🔍 開始處理待預測帳戶...")
+            print("\n🔍 開始處理測試資料(待預測帳戶)...")
             test_results = []
             predict_rank_df = pd.read_csv(RANK_DIR / "rank_待預測帳戶_交易筆數_asc.csv")
 
             for i, acct in enumerate(tqdm(predict_accts, desc="轉換待預測帳戶中...")):
                 if acct not in index_map:
                     continue
-                res = process_account(acct, meta, index_map[acct], global_exchange)
+                res = process_account(args, acct, meta, index_map[acct], global_exchange)
                 txn_cnt = int(predict_rank_df.loc[predict_rank_df["acct"] == acct, "total_txn_count"].values[0])
                 res["bucket"] = bucket_txn_count(txn_cnt)
                 test_results.append(res)
                 if (i+1) % 200 == 0:
                     elapsed = time.time() - start_time
                     est_total = elapsed / (i+1) * len(predict_accts)
-                    print(f"✅ 已完成 {i+1}/{len(predict_accts)} | 預估剩餘: {est_total - elapsed:.1f} 秒")
+                    #print(f"✅ 已完成 {i+1}/{len(predict_accts)} | 預估剩餘: {est_total - elapsed:.1f} 秒")
 
             print(f"✅ 待預測帳戶處理完成，共 {len(test_results)} 筆")
 
@@ -442,47 +497,27 @@ def main(Train_val_gen=True, Test_gen=True, samples=1000, seq_len=50, data_dir=P
             print(f"✅ 已載入 {len(test_results)} 筆待預測帳戶資料")
 
         print("🔄 轉換成 token 序列中... (尚未 embedding)")
-        test_tokens, test_masks, test_labels, test_accts = flatten_tokens(test_results, alert_accts)
-            
-        np.savez("datasets/initial_competition/Esun_test.npz",
-                tokens=test_tokens, mask=test_masks, label=test_labels, acct=test_accts)
+
+        test_tokens, test_masks, test_labels, test_accts = flatten_tokens(test_results, alert_accts, mode="test", soft_label=0)
+        np.savez(TEST_NPZ, tokens=test_tokens, mask=test_masks, label=test_labels, acct=test_accts)
         print(f"✅ 儲存完成: test.npz ({test_tokens.shape})")
 
         print("Esun_test 處理時間: %.2f 秒" % (time.time() - start_time))
-
-# if __name__ == "__main__":
-    # Train_val_gen = True # True, False
-    # Test_gen = False  # True, False
-    # main(Train_val_gen, Test_gen)
     
+    else:
+        print(f"Test.npz 已存在:{TEST_NPZ}")
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Data preprocessing pipeline for Esun competition")
 
     # ✅ 可調整的參數
-    parser.add_argument("--sample_size", type=int, default=4000, help="抽樣帳戶數量")
-    parser.add_argument("--seq_len", type=int, default=50, help="每帳戶序列長度")
-    parser.add_argument("--data_dir", type=str, help="每帳戶序列長度")
-    parser.add_argument("--seed", type=int, help="random seed")
-    parser.add_argument("--train_val_gen", action="store_true", help="是否生成 train/val 資料")
-    parser.add_argument("--test_gen", action="store_true", help="是否生成 test 資料")
+    parser.add_argument("--sample_size", type=int, default=20000, help="抽樣帳戶數量")
+    parser.add_argument("--seq_len", type=int, default=100, help="每帳戶序列長度")
+    parser.add_argument("--seed", type=int, default=42, help="random seed")
+    parser.add_argument("--predict_data", action="store_true", help="是否使用待預測帳戶作為訓練資料")
+    parser.add_argument("--soft_label", type=float, default=0, help="非警示帳戶 soft label 值 (若 <=0 則為 hard label)")
 
     args = parser.parse_args()
     
-
-    # 將 argparse 傳入的值更新全域變數
-    seed = args.seed    
-    samples = args.sample_size
-    seq_len = args.seq_len
-    Train_val_gen = args.train_val_gen
-    Test_gen = args.test_gen
-    
-    # 設定隨機變數seed
-    random.seed(seed)
-    np.random.seed(seed)
-
-    # 重新定義資料路徑（依照參數動態命名）
-    data_dir = Path(args.data_dir)
-    os.makedirs(data_dir, exist_ok=True)
-
     # 執行主流程
-    main(Train_val_gen=Train_val_gen, Test_gen=Test_gen, samples=samples, seq_len=seq_len, data_dir=data_dir)
+    main(args)
