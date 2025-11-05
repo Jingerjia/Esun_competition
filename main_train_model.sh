@@ -1,37 +1,57 @@
-#!/bin/bash
 
-# ----------- 參數設定 -----------
-SAMPLE=4000
-SEQ_LEN=50
-GENERATE_ANYWAY=FALSE
+# ----------- 訓練超參數設定 -----------
 EPOCHS=100
+SEED=42
+LEARNING_RATE=1e-5
+BATCH_SIZE=16
+# ----------- Clustering 參數設定 -----------
+GENERATE_ANYWAY=FALSE
 CLUSTERS=8
-LABEL_THRESHOLD=0.3
 CLUSTER_ANYWAY=FALSE
 CLUSTERING_METHOD=kmeans
-SEED=42
-DO_CLUSTERING=TRUE
-# ----------- 路徑設定 -----------
-DATA_DIR=datasets/initial_competition/sample_${SAMPLE}_seq_len_${SEQ_LEN}
-TRAIN_NPZ=${DATA_DIR}/train.npz
-VAL_NPZ=${DATA_DIR}/val.npz
-OUTPUT_DIR=checkpoints/transformer
-TEST_NPZ=datasets/initial_competition/Esun_test.npz
-CLUSTERED_TRAIN_NPZ=${DATA_DIR}/train_cluster.npz
+#DO_CLUSTERING=TRUE
+# ----------- Data 參數設定 -----------
+SAMPLE=4000
+PREDICT_DATA=true
+SEQ_LEN=100
+SOFT_LABEL=0
+LAYER_NUM=3
 
+# ----------- 路徑設定 -----------
+if [ "$PREDICT_DATA" = true ]; then
+    SAMPLE_TYPE="predict_data"
+else
+    SAMPLE_TYPE="sample_${SAMPLE}"
+fi
+
+if (( $(echo "$SOFT_LABEL > 0" | bc -l) )); then
+    DATA_DIR="datasets/initial_competition/${SAMPLE_TYPE}/${SAMPLE_TYPE}_seq_len_${SEQ_LEN}_soft_label_${SOFT_LABEL}"
+else
+    DATA_DIR="datasets/initial_competition/${SAMPLE_TYPE}/${SAMPLE_TYPE}_seq_len_${SEQ_LEN}"
+fi
+
+echo "DATA_DIR=$DATA_DIR"
+
+TRAIN_NPZ=$DATA_DIR/train.npz
+CLUSTERED_TRAIN_NPZ=${DATA_DIR}/train_cluster.npz
 
 # ======== 階段一：資料前處理 ========
 echo "========================================"
 echo "🚀 Step 1: Running dataloader to generate NPZ files..."
 echo "========================================"
 
-if [ ! -d "${DATA_DIR}" ] || [ "${GENERATE_ANYWAY}" = "TRUE" ]; then
-python data_preprocess.py \
-  --sample_size ${SAMPLE} \
-  --seq_len ${SEQ_LEN} \
-  --data_dir ${DATA_DIR} \
-  --seed ${SEED} \
-  --train_val_gen
+if [ "$PREDICT_DATA" = true ]; then
+  python data_preprocess.py \
+  --sample_size $SAMPLE \
+  --seq_len $SEQ_LEN \
+  --soft_label $SOFT_LABEL \
+  --predict_data
+
+else
+  python data_preprocess.py \
+  --sample_size $SAMPLE \
+  --seq_len $SEQ_LEN \
+  --soft_label $SOFT_LABEL
 fi
 
 # ======== 階段二：Clustering ========
@@ -45,8 +65,7 @@ if [ "${DO_CLUSTERING}" = "TRUE" ]; then
 	  --input_npz ${TRAIN_NPZ} \
 	  --n_clusters ${CLUSTERS} \
 	  --method ${CLUSTERING_METHOD} \
-	  --batch_size 128 \
-	  --threshold ${LABEL_THRESHOLD}
+	  --batch_size 128
 	fi
 
 
@@ -70,17 +89,34 @@ echo "========================================"
 echo "🚀 Step 3: 開始訓練模型 main_train.py ..."
 echo "========================================"
 
-python main_train.py \
-  --Sample ${SAMPLE} \
-  --Sequence ${SEQ_LEN} \
-  --train_npz ${TRAIN_NPZ} \
-  --val_npz ${VAL_NPZ} \
-  --test_npz ${TEST_NPZ} \
-  --num_layers 3 \
-  --output_dir ${OUTPUT_DIR} \
-  --lr 1e-5 \
-  --seed ${SEED} \
-  --epochs ${EPOCHS} \
-  --batch_size 16 \
-  --use_cluster
+if [ "$PREDICT_DATA" = true ]; then
+  python main_train.py \
+    --train_npz $TRAIN_NPZ \
+    --val_npz $DATA_DIR/val.npz \
+    --test_npz datasets/initial_competition/Esun_test/Esun_test_seq_${SEQ_LEN}.npz \
+    --output_dir checkpoints/transformer \
+    --sample_size $SAMPLE \
+    --seq_len $SEQ_LEN \
+    --soft_label $SOFT_LABEL \
+    --lr $LEARNING_RATE \
+    --seed $SEED \
+    --epochs $EPOCHS \
+    --num_layers $LAYER_NUM \
+    --batch_size $BATCH_SIZE \
+    --predict_data
 
+else
+  python main_train.py \
+    --train_npz $TRAIN_NPZ \
+    --val_npz $DATA_DIR/val.npz \
+    --test_npz datasets/initial_competition/Esun_test/Esun_test_seq_${SEQ_LEN}.npz \
+    --output_dir checkpoints/transformer \
+    --sample_size $SAMPLE \
+    --seq_len $SEQ_LEN \
+    --soft_label $SOFT_LABEL \
+    --lr $LEARNING_RATE \
+    --seed $SEED \
+    --epochs $EPOCHS \
+    --num_layers $LAYER_NUM \
+    --batch_size $BATCH_SIZE
+fi
