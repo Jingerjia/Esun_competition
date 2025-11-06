@@ -6,16 +6,18 @@ clustering.py
 
 import os
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from sklearn.preprocessing import StandardScaler
 from sklearn.mixture import GaussianMixture
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans, AgglomerativeClustering, DBSCAN, Birch, SpectralClustering
+from kmodes.kmodes import KModes
+from kmodes.kprototypes import KPrototypes
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import seaborn as sns
 from dataloader import get_dataloader
-
 
 def extract_features_from_dataloader(dataloader):
     """
@@ -50,7 +52,6 @@ def plot_cluster_scatter(X, cluster_ids, labels, save_path="cluster_scatter.png"
 
     reduced = reducer.fit_transform(X)
 
-    import pandas as pd
     df = pd.DataFrame({
         "x": reduced[:, 0],
         "y": reduced[:, 1],
@@ -80,27 +81,45 @@ def plot_cluster_scatter(X, cluster_ids, labels, save_path="cluster_scatter.png"
     df.to_csv(points_csv, index=False, encoding="utf-8-sig")
 
 
-def cluster_with_dataloader(input_npz, n_clusters=10, method="gmm", batch_size=128, threshold="0.6"):
+def cluster_with_dataloader(args):
     """
     直接從 dataloader 讀取 npz 檔案資料進行 clustering
     並對與 label=1 同群的樣本給 soft_label=0.5
     """
     # 讀取資料
-    dataloader = get_dataloader(input_npz, batch_size=batch_size, shuffle=False)
+    dataloader = get_dataloader(args.input_npz, batch_size=args.batch_size, shuffle=False)
     X, labels = extract_features_from_dataloader(dataloader)
-
+    
+    # print(pd.DataFrame(X).head(10))
     # 標準化
     X_scaled = StandardScaler().fit_transform(X)
 
     # Clustering
-    if method == "gmm":
-        model = GaussianMixture(n_components=n_clusters, random_state=42)
+    if args.method == "gmm":
+        model = GaussianMixture(n_components=args.n_clusters, random_state=args.seed)
+        cluster_ids = model.fit_predict(X_scaled)
+    elif args.method == "kmeans":
+        model = KMeans(n_clusters=args.n_clusters, random_state=args.seed)
+        cluster_ids = model.fit_predict(X_scaled)
+    elif args.method == "kmodes":
+        model = KModes(n_clusters=args.n_clusters, init='Huang', random_state=args.seed)
+        cluster_ids = model.fit_predict(X)  # 不需 scaling，X 為原始類別資料
+    elif args.method == "hierarchical":
+        model = AgglomerativeClustering(n_clusters=args.n_clusters, linkage="ward")
+        cluster_ids = model.fit_predict(X_scaled)
+    elif args.method == "dbscan":
+        model = DBSCAN(eps=0.5, min_samples=5)
+        cluster_ids = model.fit_predict(X_scaled)
+    elif args.method == "birch":
+        model = Birch(n_clusters=args.n_clusters)
+        cluster_ids = model.fit_predict(X_scaled)
+    elif args.method == "spectral":
+        model = SpectralClustering(n_clusters=args.n_clusters, random_state=args.seed, affinity='nearest_neighbors')
         cluster_ids = model.fit_predict(X_scaled)
     else:
-        model = KMeans(n_clusters=n_clusters, random_state=42)
-        cluster_ids = model.fit_predict(X_scaled)
+        raise ValueError(f"Unknown clustering method: {args.method}")
 
-    print(f"✅ 聚類完成: n_clusters={n_clusters}")
+    print(f"✅ 聚類完成: n_clusters={args.n_clusters}")
 
     # 找出所有 label=1 的群集
     pos_clusters = set(cluster_ids[labels == 1])
@@ -117,29 +136,27 @@ def cluster_with_dataloader(input_npz, n_clusters=10, method="gmm", batch_size=1
         cluster_mask = (cluster_ids == c)
         cluster_labels = labels[cluster_mask]
         pos_ratio = np.mean(cluster_labels == 1)
-        if pos_ratio >= threshold:
-            new_labels[cluster_mask & (labels == 0)] = 0.5
+        if pos_ratio >= args.threshold:
+            new_labels[cluster_mask & (labels == 0)] = args.soft_label
 
 
     unique, counts = np.unique(new_labels, return_counts=True)
     print(dict(zip(unique, counts)))
     
     # 重新讀 npz 內容並附加 soft_label
-    output_npz = input_npz.replace(".npz", f"_cluster.npz")
-    print(f"training data path: {output_npz}")
+    print(f"training data path: {args.output_npz}")
     
 
     changed = np.sum((labels != new_labels))
     print(f"共有 {changed} 筆樣本被更新為 label=0.5")
     
-    npz_data = dict(np.load(input_npz, allow_pickle=True))
+    npz_data = dict(np.load(args.input_npz, allow_pickle=True))
     npz_data["label"] = new_labels
-    os.makedirs(os.path.dirname(output_npz), exist_ok=True)
-    np.savez_compressed(output_npz, **npz_data)
+    np.savez_compressed(args.output_npz, **npz_data)
     print("✅ 完成 clustering 並加入 soft_label")
     
-    plot_cluster_scatter(X_scaled, cluster_ids, new_labels, save_path=output_npz.replace(".npz", "_scatter_pca.png"), method="pca")
-    plot_cluster_scatter(X_scaled, cluster_ids, new_labels, save_path=output_npz.replace(".npz", "_scatter_tsne.png"), method="tsne")
+    plot_cluster_scatter(X_scaled, cluster_ids, new_labels, save_path=args.output_npz.replace(".npz", "_scatter_pca.png"), method="pca")
+    plot_cluster_scatter(X_scaled, cluster_ids, new_labels, save_path=args.output_npz.replace(".npz", "_scatter_tsne.png"), method="tsne")
 
 
 
@@ -147,16 +164,13 @@ if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()
     p.add_argument("--input_npz", required=True)
+    p.add_argument("--output_npz", required=True)
     p.add_argument("--n_clusters", type=int, default=10)
-    p.add_argument("--method", choices=["gmm", "kmeans"], default="gmm")
+    p.add_argument("--method", type=str, default="kmeans")
     p.add_argument("--batch_size", type=int, default=128)
     p.add_argument("--threshold", type=float, default=0.6)
+    p.add_argument("--soft_label", type=float, default=0.5)
+    p.add_argument("--seed", type=int, default=42)
     args = p.parse_args()
 
-    cluster_with_dataloader(
-        input_npz=args.input_npz,
-        n_clusters=args.n_clusters,
-        method=args.method,
-        batch_size=args.batch_size,
-        threshold=args.threshold
-    )
+    cluster_with_dataloader(args=args)
