@@ -1,30 +1,39 @@
+
 # ----------- 訓練超參數設定 -----------
 EPOCHS=100
 SEED=42
-LEARNING_RATE=1e-5
+LEARNING_RATE=1e-5 # 1e-5 5e-6
 BATCH_SIZE=16
-TRAIN=TRUE
-# ----------- Clustering 參數設定 -----------
-CLUSTERS=8
-CLUSTER_ANYWAY=TRUE
-CLUSTERING_METHOD=spectral
-THRESHOLD=0.5
-DO_CLUSTERING=TRUE
-# ----------- Data 參數設定 -----------
-SAMPLE=4000
-PREDICT_DATA=TRUE
-SEQ_LEN=100
-SOFT_LABEL=0.2
+NO_CH_CUR_EMB=false # true, false
+MODEL=transformer
 LAYER_NUM=3
+# ----------- Clustering 參數設定 -----------
+CLUSTER_ANYWAY=false # true, false
+DO_CLUSTERING=false # true, false
+CLUSTERS=8
+THRESHOLD=0.6
+CLUSTERING_METHOD=gmm # kmeans, gmm
+CLUSTERING_SOFT_LABEL=0.2
+#CUSTER_NAME="Clustering_${CLUSTERING_METHOD}_${CLUSTERS}_${THRESHOLD}_label_${CLUSTERING_SOFT_LABEL}"
+CUSTER_NAME=None
+# ----------- Data 參數設定 -----------
+SAMPLE=0 # 20000, 4000, 1000, 0
+PREDICT_DATA=true # true, false
+CLS_TOKEN=false # true, false
+RESPLIT_DATA=false # true, false
+ONE_TOKEN_PER_DAY=true # true, false
+SEQ_LEN=50
+SOFT_LABEL=0
+TRUE_WEIGHT=1  # 1
 
 # ----------- 路徑設定 -----------
-if [ "$PREDICT_DATA" = TRUE ]; then
+if [ "$PREDICT_DATA" = true ]; then
     SAMPLE_TYPE="predict_data"
 else
     SAMPLE_TYPE="sample_${SAMPLE}"
 fi
 
-if ([ ! "$DO_CLUSTERING" = TRUE ] || ( $(echo "$SOFT_LABEL > 0" | bc -l) )); then
+if (( $(echo "$SOFT_LABEL > 0" | bc -l) )); then
     DATA_DIR="datasets/initial_competition/${SAMPLE_TYPE}/${SAMPLE_TYPE}_seq_len_${SEQ_LEN}_soft_label_${SOFT_LABEL}"
 else
     DATA_DIR="datasets/initial_competition/${SAMPLE_TYPE}/${SAMPLE_TYPE}_seq_len_${SEQ_LEN}"
@@ -32,44 +41,51 @@ fi
 
 echo "DATA_DIR=$DATA_DIR"
 
-TRAIN_NPZ="$DATA_DIR/train.npz"
-CLUSTERED_TRAIN_NPZ="${DATA_DIR}/train_${CLUSTERING_METHOD}_n${CLUSTERS}_thresh${THRESHOLD}.npz"
+if [ "${ONE_TOKEN_PER_DAY}" = "true" ]; then
+    OTPD="_one_token_per_day"
+else
+    OTPD=""
+fi
 
+
+if [ "${RESPLIT_DATA}" = "true" ]; then
+    TRAIN_NPZ=$DATA_DIR/train${OTPD}_resplit.npz
+    VAL_NPZ=$DATA_DIR/val${OTPD}_resplit.npz
+else
+    TRAIN_NPZ=$DATA_DIR/train${OTPD}.npz
+    VAL_NPZ=$DATA_DIR/val${OTPD}.npz
+fi
+
+TEST_NPZ=datasets/initial_competition/Esun_test/Esun_test_seq_${SEQ_LEN}${OTPD}.npz
+CLUSTERED_TRAIN_NPZ=${DATA_DIR}/train_cluster.npz
 # ======== 階段一：資料前處理 ========
 echo "========================================"
 echo "🚀 Step 1: Running dataloader to generate NPZ files..."
 echo "========================================"
 
-if [ "$PREDICT_DATA" = TRUE ]; then
-  python data_preprocess.py \
-  --sample_size $SAMPLE \
-  --seq_len $SEQ_LEN \
-  --soft_label $SOFT_LABEL \
-  --predict_data
-
-else
-  python data_preprocess.py \
-  --sample_size $SAMPLE \
-  --seq_len $SEQ_LEN \
-  --soft_label $SOFT_LABEL
-fi
+python data_preprocess.py \
+--sample_size $SAMPLE \
+--seq_len $SEQ_LEN \
+--seed $SEED \
+--one_token_per_day $ONE_TOKEN_PER_DAY \
+--predict_data $PREDICT_DATA \
+--soft_label $SOFT_LABEL \
+--resplit_data $RESPLIT_DATA
 
 # ======== 階段二：Clustering ========
 echo "========================================"
 echo "🚀 Step 2: 執行 clustering.py 對訓練資料進行聚類 ..."
 echo "========================================"
 
-if [ "${DO_CLUSTERING}" = "TRUE" ]; then
-	if [ ! -f "${CLUSTERED_TRAIN_NPZ}" ] || [ "${CLUSTER_ANYWAY}" = "TRUE" ]; then
+if [ "${DO_CLUSTERING}" = "true" ]; then
+	if [ ! -f "${CLUSTERED_TRAIN_NPZ}" ] || [ "${CLUSTER_ANYWAY}" = "true" ]; then
 	python clustering.py \
-	  --input_npz ${TRAIN_NPZ} \
-	  --output_npz ${CLUSTERED_TRAIN_NPZ} \
-	  --n_clusters ${CLUSTERS} \
-	  --method ${CLUSTERING_METHOD} \
-	  --batch_size 128 \
-	  --threshold ${THRESHOLD} \
-	  --soft_label ${SOFT_LABEL} \
-	  --seed ${SEED}
+        --input_npz ${TRAIN_NPZ} \
+        --n_clusters ${CLUSTERS} \
+        --method ${CLUSTERING_METHOD} \
+        --batch_size 128 \
+        --threshold $THRESHOLD \
+        --soft_label $CLUSTERING_SOFT_LABEL
 	fi
 
 
@@ -80,56 +96,37 @@ if [ "${DO_CLUSTERING}" = "TRUE" ]; then
 
 	echo "✅ Clustering 完成，已生成 ${CLUSTERED_TRAIN_NPZ}"
 	echo ""
-	TRAIN_NPZ=$CLUSTERED_TRAIN_NPZ
 fi
 
 
-if [ ! "${DO_CLUSTERING}" = "TRUE" ]; then
+if [ ! "${DO_CLUSTERING}" = "true" ]; then
 	echo "跳過 Clustering 階段"
 	echo ""
 fi
-
 
 # ======== 階段三：模型訓練 ========
 echo "========================================"
 echo "🚀 Step 3: 開始訓練模型 main_train.py ..."
 echo "========================================"
 
-echo "TRAIN_NPZ: $TRAIN_NPZ"
-
-if [ ! "${TRAIN}" = "TRUE" ]; then
-	echo "暫不訓練"
-	exit 1
-fi
-
-if [ "$PREDICT_DATA" = TRUE ]; then
-  python main_train.py \
+python main_train.py \
+    --output_dir checkpoints/$MODEL/$OTPD \
     --train_npz $TRAIN_NPZ \
-    --val_npz $DATA_DIR/val.npz \
-    --test_npz datasets/initial_competition/Esun_test/Esun_test_seq_${SEQ_LEN}.npz \
-    --output_dir checkpoints/transformer \
-    --sample_size $SAMPLE \
-    --seq_len $SEQ_LEN \
-    --soft_label $SOFT_LABEL \
-    --lr $LEARNING_RATE \
-    --seed $SEED \
+    --val_npz $VAL_NPZ \
+    --test_npz $TEST_NPZ \
     --epochs $EPOCHS \
-    --num_layers $LAYER_NUM \
+    --seed $SEED \
+    --lr $LEARNING_RATE \
     --batch_size $BATCH_SIZE \
-    --predict_data
-
-else
-  python main_train.py \
-    --train_npz $TRAIN_NPZ \
-    --val_npz $DATA_DIR/val.npz \
-    --test_npz datasets/initial_competition/Esun_test/Esun_test_seq_${SEQ_LEN}.npz \
-    --output_dir checkpoints/transformer \
+    --model $MODEL \
+    --num_layers $LAYER_NUM \
+    --without_channel_currency_emb $NO_CH_CUR_EMB \
+    --use_cluster $DO_CLUSTERING \
+    --cluster_name $CUSTER_NAME \
     --sample_size $SAMPLE \
+    --predict_data $PREDICT_DATA \
+    --one_token_per_day $ONE_TOKEN_PER_DAY \
+    --CLS_token $CLS_TOKEN \
     --seq_len $SEQ_LEN \
     --soft_label $SOFT_LABEL \
-    --lr $LEARNING_RATE \
-    --seed $SEED \
-    --epochs $EPOCHS \
-    --num_layers $LAYER_NUM \
-    --batch_size $BATCH_SIZE
-fi
+    --true_weight $TRUE_WEIGHT \

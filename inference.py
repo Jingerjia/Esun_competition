@@ -11,20 +11,25 @@ from dataloader import get_dataloader
 import pandas as pd
 
 @torch.no_grad()
-def run_inference(model, npz_path, output_csv, device="cpu", threshold=0.5):
+def run_inference(args, model, npz_path, output_csv, device="cpu", threshold=0.5):
     """
     model: 已載入權重的 Transformer 模型
     npz_path: 要推論的 npz 檔路徑 (ex: analyze_UI/cache/test.npz)
     output_csv: 要輸出的 CSV 檔案路徑
     """
     model.eval()
-    loader = get_dataloader(npz_path, batch_size=64, shuffle=False, device=device)
+    loader = get_dataloader(args, npz_path, batch_size=64, shuffle=False, device=device)
 
     accts, preds = [], []
     for batch in loader:
         x = batch["x"].to(device)
-        ch = batch["ch_idx"].to(device)
-        cu = batch["cu_idx"].to(device)
+        
+        if args.one_token_per_day:
+            ch = None
+            cu = None
+        else:
+            ch = batch["ch_idx"].to(device)
+            cu = batch["cu_idx"].to(device)
 
         logits = model(x, ch, cu)
         probs = torch.sigmoid(logits).cpu().numpy().flatten()
@@ -50,9 +55,10 @@ def run_inference(model, npz_path, output_csv, device="cpu", threshold=0.5):
         # 依照原始順序重新排列
         df_reordered = df_new_indexed.loc[df_ref['acct']].reset_index()
         df_reordered.to_csv(output_csv, index=False)
-        
+        alert_count = (df['label'] == 1).sum()
+
         print(f"✅Test inference 完成，共 {len(df)} 筆結果已輸出至 {output_csv}")
-        return df_reordered
+        return df_reordered, alert_count
             
     
 

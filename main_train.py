@@ -13,6 +13,17 @@ import matplotlib.pyplot as plt
 from dataloader import get_dataloader
 from tqdm import tqdm
 
+
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+
 # =====================
 #  Utils
 # =====================
@@ -29,15 +40,30 @@ def set_seed(seed):
 # =====================
 #  Training Framework
 # =====================
-def train_one_epoch(model, dataloader, optimizer, criterion, device):
+def train_one_epoch(args, model, dataloader, optimizer, criterion, device):
+    """
+    x: (B, T, D)
+    """
     model.train()
     losses = []
     pbar = tqdm(dataloader, desc="Training", leave=False)
     for batch in pbar:
+
+        if args.one_token_per_day:
+            ch = None
+            cu = None
+        else:
+            ch = batch["ch_idx"].to(device)
+            cu = batch["cu_idx"].to(device)
+
         x = batch["x"].to(device)
-        ch = batch["ch_idx"].to(device)
-        cu = batch["cu_idx"].to(device)
         y = batch["label"].float().unsqueeze(1).to(device)
+        #print(f"\n\nx.shape = {x.shape}\n\n")
+
+        if args.true_weight < 1:
+            #print(f"len([y != 1]) ={len([y != 1])}")
+            #print(f"[y != 1] ={[y != 1]}")
+            x[(y != 1).squeeze(), :, -3:-1] *= args.true_weight
 
         optimizer.zero_grad()
         logits = model(x, ch, cu)
@@ -48,13 +74,16 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device):
         pbar.set_postfix({"loss": f"{np.mean(losses):.4f}"})
     return np.mean(losses)
 
-def evaluate(model, dataloader, device, thresholds = 0.5):
+def evaluate(args, model, dataloader, device, thresholds = 0.5):
     model.eval()
     preds, trues = [], []
     with torch.no_grad():
         for batch in dataloader:
             y = (batch["label"] >= thresholds).to(torch.int64).cpu().numpy().tolist()
-            logits = model(batch["x"].to(device), batch["ch_idx"].to(device), batch["cu_idx"].to(device))
+            if args.one_token_per_day:
+                logits = model(batch["x"].to(device), None, None)
+            else:
+                logits = model(batch["x"].to(device), batch["ch_idx"].to(device), batch["cu_idx"].to(device))
             prob = torch.sigmoid(logits).cpu().numpy().flatten()
             pred = (prob > thresholds).astype(int).tolist()
             preds += pred
@@ -119,7 +148,6 @@ def plot_metrics(epochs, train_accs, val_accs, train_f1s, val_f1s, save_path, tr
     plt.tight_layout()
     plt.close()
 
-
 # =====================
 #  Utils: Label 檢查
 # =====================
@@ -180,15 +208,37 @@ def main(args):
     # Prepare output dir
     timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
 
+    # prefix_data
     if args.predict_data:
-        output_dir = f"{args.output_dir}/predict_data/predict_data_seq_{args.seq_len}_layers_{args.num_layers}"      
+        prefix_data = "predict_data"
     else:
-        output_dir = f"{args.output_dir}/sample_{args.sample_size}/sample_{args.sample_size}_seq_{args.seq_len}_layers_{args.num_layers}"
-
+        prefix_data = f"sample_{args.sample_size}"
+    # prefix_seq
+    prefix_seq = f"_seq_{args.seq_len}"
+    # prefix_layers
+    prefix_layers = f"_layers_{args.num_layers}"
+    # prefix_soft_label
     if args.soft_label > 0:
-        output_dir = f"{output_dir}_soft_label_{args.soft_label}_{timestamp}"
+        prefix_soft_label = f"_soft_label_{args.soft_label}"
+    elif args.true_weight < 1:
+        prefix_soft_label = f"_true_weight_{args.true_weight}"
     else:
-        output_dir = f"{output_dir}_{timestamp}"
+        prefix_soft_label = ""
+    # prefix_use_cluster
+    if args.use_cluster:
+        prefix_use_cluster = f"_{args.cluster_name}" 
+    else:
+        prefix_use_cluster = ""
+    # prefix_without_channel_currency_emb
+    if args.without_channel_currency_emb and not args.one_token_per_day:
+        prefix_without_ch_cur_emb = "_without_ch_cur_emb"
+    else:
+        prefix_without_ch_cur_emb = ""
+
+    output_dir = f"{args.output_dir}/{prefix_data}/{prefix_data}{prefix_seq}{prefix_layers}{prefix_soft_label}{prefix_use_cluster}{prefix_without_ch_cur_emb}_{timestamp}" 
+
+    csv_name = output_dir.split(f"_{timestamp}")[0].split('/')[-1]
+    print(f"\n\ncsv_name = {csv_name}\n\n")
 
     os.makedirs(f"{output_dir}/ckpt", exist_ok=True)
     os.makedirs(f"{output_dir}/plots", exist_ok=True)
@@ -209,9 +259,9 @@ def main(args):
     labels = ["normal", "alert"]
     log_file.write(f"Labels: {labels}\n")
 
-    train_dl = get_dataloader(args.train_npz, batch_size=args.batch_size, shuffle=True, device=device)
-    val_dl   = get_dataloader(args.val_npz, batch_size=args.batch_size, shuffle=False, device=device)
-    test_dl  = get_dataloader(args.test_npz, batch_size=args.batch_size, shuffle=False, device=device)
+    train_dl = get_dataloader(args, args.train_npz, batch_size=args.batch_size, shuffle=True, device=device, true_weight=args.true_weight)
+    val_dl   = get_dataloader(args, args.val_npz, batch_size=args.batch_size, shuffle=False, device=device)
+    test_dl  = get_dataloader(args, args.test_npz, batch_size=args.batch_size, shuffle=False, device=device)
 
     check_label_distribution(train_dl)
 
@@ -220,7 +270,10 @@ def main(args):
     # -------------------------------------------
     # Example: from model import YourModel
     from model import TransactionTransformer
-    model = TransactionTransformer(input_dim=10, num_layers=args.num_layers).to(device)
+    if args.one_token_per_day:
+        model = TransactionTransformer(args, input_dim=8+2, num_layers=args.num_layers).to(device)
+    else:
+        model = TransactionTransformer(args, input_dim=10, num_layers=args.num_layers).to(device)
     log_file.write("======================================== Model ======================================== \n")
     log_file.write(str(model))  # ✅ 轉為字串
     log_file.write("\n ======================================================================================= \n\n")
@@ -240,9 +293,9 @@ def main(args):
     # -------------------------------------------
     from tqdm import trange
     for epoch in trange(1, args.epochs + 1, desc="Epoch Progress"):
-        train_loss = train_one_epoch(model, train_dl, optimizer, criterion, device)
-        val_acc, val_f1, _, _, _, _ = evaluate(model, val_dl, device)
-        train_acc, train_f1, _, _, _, _ = evaluate(model, train_dl, device)
+        train_loss = train_one_epoch(args, model, train_dl, optimizer, criterion, device)
+        val_acc, val_f1, _, _, _, _ = evaluate(args, model, val_dl, device)
+        train_acc, train_f1, _, _, _, _ = evaluate(args, model, train_dl, device)
 
         log_file.write(f"Epoch {epoch}: Train Acc={train_acc.item():.2f}%, Val Acc={val_acc.item():.2f}%,Train F1={train_f1:.3f}, Val F1={val_f1:.3f}, Loss={train_loss.item():.4f}\n")
         log_file.flush()
@@ -278,7 +331,7 @@ def main(args):
 
     # Reload best model
     model.load_state_dict(torch.load(best_ckpt))
-    test_acc, test_f1_alert, test_prec_alert, test_rec_alert, preds, trues = evaluate(model, val_dl, device)
+    test_acc, test_f1_alert, test_prec_alert, test_rec_alert, preds, trues = evaluate(args, model, val_dl, device)
     log_file.write(f"Final Val Acc = {test_acc:.2f}%\n")
 
     cm = confusion_matrix(trues, preds)
@@ -306,11 +359,9 @@ def main(args):
     from inference import run_inference
     print("🚀 開始產生 submission.csv ...")
 
-    
     val_output_csv = f"{output_dir}/val_inf.csv"
-    run_inference(model, args.val_npz, val_output_csv, device=device)
-
-
+    run_inference(args, model, args.val_npz, val_output_csv, device=device)
+    """
     if args.predict_data:
         test_output_name = f"{output_dir}/predict_data_seq_{args.seq_len}"
     else:
@@ -320,8 +371,11 @@ def main(args):
         test_output_csv = f"{test_output_name}_soft_label_{args.soft_label}.csv"
     else:
         test_output_csv = f"{test_output_name}.csv"
+    """
+    
+    test_output_csv = f"{output_dir}/{csv_name}.csv"
 
-    _, alert_count = run_inference(model, args.test_npz, test_output_csv, device=device)
+    _, alert_count = run_inference(args, model, args.test_npz, test_output_csv, device=device)
     
     log_file.write(f"alert_count: {alert_count}")
     log_file.write("\n=====================\n")
@@ -337,20 +391,27 @@ def main(args):
 # =====================
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
+    p.add_argument("--ckpt", default=None)
     p.add_argument("--train_npz", default="datasets/initial_competition/predict_data/seq_len_100_soft_label_0.3/train.npz")
     p.add_argument("--val_npz", default="datasets/initial_competition/predict_data/seq_len_100_soft_label_0.3/val.npz")
     p.add_argument("--test_npz", default="datasets/initial_competition/Esun_test.npz")
     p.add_argument("--output_dir", default="checkpoints/transformer")
-    p.add_argument("--predict_data", action="store_true", help="是否使用待預測帳戶作為訓練資料")
-    p.add_argument("--soft_label", type=float, default=0, help="非警示帳戶 soft label 值 (若 <=0 則為 hard label)")
-    p.add_argument("--num_layers", type=int, default=3)
     p.add_argument("--sample_size", type=int, default=4780)
     p.add_argument("--seq_len", type=int, default=100)
-    p.add_argument("--ckpt", default=None)
-    p.add_argument("--epochs", type=int, default=100)
-    p.add_argument("--batch_size", type=int, default=16)
+    p.add_argument("--soft_label", type=float, default=0, help="非警示帳戶 soft label 值 (若 <=0 則為 hard label)")
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--use_cluster", action="store_true", help="是否先用 clustering 產生 soft label")
+    p.add_argument("--epochs", type=int, default=100)
+    p.add_argument("--num_layers", type=int, default=3)
+    p.add_argument("--batch_size", type=int, default=16)
+    p.add_argument("--true_weight", type=float, default=1.0)
+    p.add_argument("--cluster_name", type=str, default="")
+    p.add_argument("--model", type=str, default="transformer")
+    p.add_argument("--predict_data", type=str2bool, default=False, help="是否使用待預測帳戶作為訓練資料")
+    p.add_argument("--use_cluster", type=str2bool, default=False, help="是否先用 clustering 產生 soft label")
+    p.add_argument("--CLS_token", type=str2bool, default=False, help="是否使用 CLS_token (若未使用則是平均)")
+    p.add_argument("--without_channel_currency_emb", type=str2bool, default=False, help="是否不使用幣別與交易通路 embedding ")
+    p.add_argument("--one_token_per_day", type=str2bool, default=False, help="是否將特徵改成每日彙整")
+    
     args = p.parse_args()
     main(args)

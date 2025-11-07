@@ -37,6 +37,7 @@ class PositionalEncoding(nn.Module):
 class TransactionTransformer(nn.Module):
     def __init__(
         self,
+        args,
         input_dim,  # 原本特徵 (不含 embedding)
         hidden_dim=128,
         num_heads=4,
@@ -51,14 +52,26 @@ class TransactionTransformer(nn.Module):
         super().__init__()
 
         # ===== Embeddings =====
-        self.channel_emb = nn.Embedding(num_channels, embed_dim_channel, padding_idx=0)
-        self.currency_emb = nn.Embedding(num_currencies, embed_dim_currency, padding_idx=0)
+        self.without_channel_currency_emb = args.without_channel_currency_emb
+        self.one_token_per_day = args.one_token_per_day
+        # ===== cls_token =====
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, hidden_dim))
+
+        if self.without_channel_currency_emb or self.one_token_per_day:
+            self.channel_emb = None
+            self.currency_emb = None
+        else:
+            self.channel_emb = nn.Embedding(num_channels, embed_dim_channel, padding_idx=0)
+            self.currency_emb = nn.Embedding(num_currencies, embed_dim_currency, padding_idx=0)
 
         # ===== Input projection =====
-        # 加上兩個 embedding 的維度
-        total_input_dim = input_dim + embed_dim_channel + embed_dim_currency - 2
+        # 加上兩個 embedding 的維度，根據是否使用 embedding 進行調整
+        if self.without_channel_currency_emb or self.one_token_per_day:
+            total_input_dim = input_dim -2
+        else:
+            total_input_dim = input_dim + embed_dim_channel + embed_dim_currency -2
+            
         self.input_proj = nn.Linear(total_input_dim, hidden_dim)
-
         self.pos_encoder = PositionalEncoding(hidden_dim)
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=hidden_dim,
@@ -76,12 +89,30 @@ class TransactionTransformer(nn.Module):
             nn.Linear(hidden_dim // 2, 1)
         )
 
-    def forward(self, x, ch_idx, cu_idx, mask=None):
-        ch_emb = self.channel_emb(ch_idx)
-        cu_emb = self.currency_emb(cu_idx)
-        x = torch.cat([x, ch_emb, cu_emb], dim=-1)  # 拼回完整特徵
+    def forward(self, x, ch_idx, cu_idx, mask=None, CLS_token=False, ):
+        if mask is not None and CLS_token:
+            cls_mask = torch.ones(mask.size(0), 1, device=mask.device, dtype=mask.dtype)
+            mask = torch.cat([cls_mask, mask], dim=1)
+        # 決定是否加上 channel 和 currency 的 embedding
+        if self.without_channel_currency_emb or self.one_token_per_day:
+            x = x  # 不使用 embedding，只保留原始特徵
+        else:
+            ch_emb = self.channel_emb(ch_idx)
+            cu_emb = self.currency_emb(cu_idx)
+            x = torch.cat([x, ch_emb, cu_emb], dim=-1)  # 拼回完整特徵
+            
         x = self.input_proj(x)
+
+        if CLS_token:
+            B = x.size(0)
+            cls_token = self.cls_token.expand(B, -1, -1)
+            x = torch.cat([cls_token, x], dim=1)
+            
         x = self.pos_encoder(x)
         x = self.transformer_encoder(x, src_key_padding_mask=(mask == 0) if mask is not None else None)
-        x = x.mean(dim=1)
-        return self.fc_out(x)  # raw logits
+        if CLS_token:
+            cls_output = x[:, 0, :]   # [CLS] 向量
+            return self.fc_out(cls_output)
+        else:
+            x = x.mean(dim=1)
+            return self.fc_out(x)  # raw logits
