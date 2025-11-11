@@ -227,7 +227,7 @@ pretrained_encoder = bert_model.encoder
 clf_model = BertSequenceClassifier(pretrained_encoder, feat_dim, hidden_size, dropout).to(device)
 optimizer = torch.optim.AdamW(clf_model.parameters(), lr=lr_finetune)
 
-pos = int(labels_train.sum())
+pos = int(labels_finetune.sum())
 neg = int(len(labels_finetune) - pos)
 pos_weight = torch.tensor([neg / max(pos, 1)], dtype=torch.float32, device=device)
 print(f"🔧 pos={pos}, neg={neg}, pos_weight={pos_weight.item():.3f}")

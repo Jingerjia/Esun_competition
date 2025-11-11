@@ -468,6 +468,7 @@ def main(args):
 
     json_dir = Path(f"datasets/initial_competition/{sample_dir}/{sample_dir}_seq_len_{args.seq_len}")
     test_dir = f"datasets/initial_competition/Esun_test"
+    alert_dir = f"datasets/initial_competition/Esun_alert" 
     os.makedirs(json_dir, exist_ok=True)
     os.makedirs(test_dir, exist_ok=True)
     os.makedirs(data_dir, exist_ok=True)
@@ -477,17 +478,29 @@ def main(args):
     else:
         otpd = ""
 
+    if args.train_ratio != 0.9:
+        train_ra = f"_train_ratio_{args.train_ratio}"
+    else:
+        train_ra = ""
 
     if args.resplit_data:
-        TRAIN_JSON = f"{json_dir}/train{otpd}_resplit.json"
-        VAL_JSON = f"{json_dir}/val{otpd}_resplit.json"
-        TRAIN_NPZ = data_dir / f'train{otpd}_resplit.npz'
-        VAL_NPZ = data_dir / f'val{otpd}_resplit.npz'
+        TRAIN_JSON = f"{json_dir}/train{otpd}_resplit{train_ra}.json"
+        VAL_JSON = f"{json_dir}/val{otpd}_resplit{train_ra}.json"
+        TRAIN_NPZ = data_dir / f'train{otpd}_resplit{train_ra}.npz'
+        VAL_NPZ = data_dir / f'val{otpd}_resplit{train_ra}.npz'
+
+        ALL_JSON_ALERT = f"{alert_dir}/all{otpd}_alert_resplit{train_ra}.json"
+        TRAIN_JSON_ALERT = f"{alert_dir}/train{otpd}_alert_resplit{train_ra}.json"
+        VAL_JSON_ALERT = f"{alert_dir}/val{otpd}_alert_resplit{train_ra}.json"
     else:
-        TRAIN_JSON = f"{json_dir}/train{otpd}.json"
-        VAL_JSON = f"{json_dir}/val{otpd}.json"
-        TRAIN_NPZ = data_dir / f'train{otpd}.npz'
-        VAL_NPZ = data_dir / f'val{otpd}.npz'
+        TRAIN_JSON = f"{json_dir}/train{otpd}{train_ra}.json"
+        VAL_JSON = f"{json_dir}/val{otpd}{train_ra}.json"
+        TRAIN_NPZ = data_dir / f'train{otpd}{train_ra}.npz'
+        VAL_NPZ = data_dir / f'val{otpd}{train_ra}.npz'
+
+        ALL_JSON_ALERT = f"{alert_dir}/all{otpd}_alert{train_ra}.json"
+        TRAIN_JSON_ALERT = f"{alert_dir}/train{otpd}_alert{train_ra}.json"
+        VAL_JSON_ALERT = f"{alert_dir}/val{otpd}_alert{train_ra}.json"
 
     if args.one_token_per_day:
         OTPD="_one_token_per_day"
@@ -518,9 +531,9 @@ def main(args):
         meta = json.load(f)
     index_map = meta["index"]
     
-    if not os.path.exists(TRAIN_NPZ) or not os.path.exists(VAL_NPZ):
+    if not os.path.exists(TRAIN_NPZ) or not os.path.exists(VAL_NPZ) or args.regenerate:
     # 篩選訓練帳戶
-        if not os.path.exists(TRAIN_JSON) or not os.path.exists(VAL_JSON):
+        if not os.path.exists(TRAIN_JSON) or not os.path.exists(VAL_JSON) or args.regenerate:
             candidate_accts = list(yu_accts - alert_accts - predict_accts)
             print(f"可用非警示玉山帳戶數: {len(candidate_accts)}")
             print(f'\n未找到{TRAIN_JSON}、{VAL_JSON}')
@@ -620,7 +633,7 @@ def main(args):
 
                 for b, items in bucket_map_normal.items():
                     random.shuffle(items)
-                    split_idx = int(len(items) * 0.9)
+                    split_idx = int(len(items) * args.train_ratio)
                     train_data_normal.extend(items[:split_idx])
                     val_data_normal.extend(items[split_idx:])
 
@@ -632,7 +645,7 @@ def main(args):
 
                 for b, items in bucket_map_alert.items():
                     random.shuffle(items)
-                    split_idx = int(len(items) * 0.9)
+                    split_idx = int(len(items) * args.train_ratio)
                     train_data_alert.extend(items[:split_idx])
                     val_data_alert.extend(items[split_idx:])
 
@@ -656,6 +669,17 @@ def main(args):
                     split_idx = int(len(items) * 0.9)
                     train_data.extend(items[:split_idx])
                     val_data.extend(items[split_idx:])    
+
+            if args.gen_alert:
+                all_data_alert = train_data_alert + val_data_alert
+                # --- 儲存 ---
+                with open(ALL_JSON_ALERT, "w") as f:
+                    json.dump(all_data_alert, f)
+                with open(TRAIN_JSON_ALERT, "w") as f:
+                    json.dump(train_data_alert, f)
+                with open(VAL_JSON_ALERT, "w") as f:
+                    json.dump(val_data_alert, f)
+                    
 
             # --- 儲存 ---
             with open(TRAIN_JSON, "w") as f:
@@ -684,12 +708,29 @@ def main(args):
         np.savez(VAL_NPZ, tokens=val_tokens, mask=val_masks, label=val_labels, acct=val_accts)
         print(f"✅ 儲存完成: val.npz ({val_tokens.shape})")
 
+        if args.gen_alert:
+            ALL_NPZ_ALERT = data_dir / f'all{otpd}_alert{train_ra}.npz'
+            TRAIN_NPZ_ALERT = data_dir / f'train{otpd}_alert{train_ra}.npz'
+            VAL_NPZ_ALERT = data_dir / f'val{otpd}_alert{train_ra}.npz'
+
+            tokens, masks, labels, accts = flatten_tokens(args, all_data_alert, alert_accts, mode="alert", soft_label=args.soft_label)
+            np.savez(ALL_NPZ_ALERT, tokens=tokens, mask=masks, label=labels, acct=accts)
+            print(f"✅ 儲存完成: ALL_ALERT.npz ({tokens.shape})")
+
+            tokens, masks, labels, accts = flatten_tokens(args, train_data_alert, alert_accts, mode="alert", soft_label=args.soft_label)
+            np.savez(TRAIN_NPZ_ALERT, tokens=tokens, mask=masks, label=labels, acct=accts)
+            print(f"✅ 儲存完成: TRAIN_ALERT.npz ({tokens.shape})")
+
+            tokens, masks, labels, accts = flatten_tokens(args, val_data_alert, alert_accts, mode="alert", soft_label=args.soft_label)
+            np.savez(VAL_NPZ_ALERT, tokens=tokens, mask=masks, label=labels, acct=accts)
+            print(f"✅ 儲存完成: VAL_ALERT.npz ({tokens.shape})")
+
         print("Train_Val 處理時間: %.2f 秒" % (time.time() - start_time))
     else:
         print(f"train.npz 已存在:{TRAIN_NPZ}")
         print(f"val.npz 已存在:{VAL_NPZ}")
     
-    if not os.path.exists(TEST_NPZ):
+    if not os.path.exists(TEST_NPZ) or args.regenerate:
         start_time = time.time()
         if not os.path.exists(TEST_JSON):
             # === 處理待預測帳戶 (test set) ===
@@ -741,14 +782,22 @@ if __name__ == "__main__":
 
     # ✅ 可調整的參數
     parser.add_argument("--sample_size", type=int, default=20000, help="抽樣帳戶數量")
-    parser.add_argument("--seq_len", type=int, default=100, help="每帳戶序列長度")
+    parser.add_argument("--seq_len", type=int, default=200, help="每帳戶序列長度")
     parser.add_argument("--seed", type=int, default=42, help="random seed")
     parser.add_argument("--one_token_per_day", type=str2bool, default=False, help="是否將特徵改成每日彙整")
     parser.add_argument("--predict_data", type=str2bool, default=False, help="是否使用待預測帳戶作為訓練資料")
     parser.add_argument("--soft_label", type=float, default=0, help="非警示帳戶 soft label 值 (若 <=0 則為 hard label)")
     parser.add_argument("--resplit_data", type=str2bool, default=False, help="是否將警示與正常帳戶各自按照交易筆數分群?")
+    parser.add_argument("--train_ratio", type=float, default=0.9, help="train test split ratio")
+    parser.add_argument("--gen_alert", type=str2bool, default=False, help="是否單獨生成警示帳戶")
+    parser.add_argument("--regenerate", type=str2bool, default=False, help="是否重新生成所有檔案")
 
     args = parser.parse_args()
     
     # 執行主流程
     main(args)
+    """
+    
+    python data_preprocess.py --sample_size 10 --resplit_data true --gen_alert true --regenerate true
+
+    """
