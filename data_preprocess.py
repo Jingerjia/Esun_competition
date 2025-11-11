@@ -472,6 +472,7 @@ def main(args):
     os.makedirs(json_dir, exist_ok=True)
     os.makedirs(test_dir, exist_ok=True)
     os.makedirs(data_dir, exist_ok=True)
+    os.makedirs(alert_dir, exist_ok=True)
 
     if args.one_token_per_day:
         otpd = "_one_token_per_day"
@@ -798,6 +799,6 @@ if __name__ == "__main__":
     main(args)
     """
     
-    python data_preprocess.py --sample_size 10 --resplit_data true --gen_alert true --regenerate true
+    python data_preprocess.py --sample_size 200 --resplit_data true --gen_alert true --regenerate true
 
     """

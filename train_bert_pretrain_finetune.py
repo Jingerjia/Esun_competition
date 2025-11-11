@@ -19,8 +19,8 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 # 載入資料
 # ============================================================
 pretrain_npz_path = "datasets/initial_competition/sample_20000/sample_20000_seq_len_200/train_resplit.npz"
-finetune_npz_path = "datasets/initial_competition/predict_data/predict_data_seq_len_200/train_resplit.npz"
-val_npz_path      = "datasets/initial_competition/sample_20000/sample_20000_seq_len_200/val_resplit.npz"
+finetune_npz_path = "datasets/initial_competition/sample_200/sample_200_seq_len_200/train_alert.npz"
+val_npz_path      = "datasets/initial_competition/sample_200/sample_200_seq_len_200/val_resplit.npz"
 
 print("📦 載入資料中...")
 
