@@ -1,13 +1,12 @@
-
-# ----------- 訓練超參數設定 -----------
+# ----------- training hyperparameters -----------
 EPOCHS=100
 SEED=42
 LEARNING_RATE=1e-5 # 1e-5 5e-6
 BATCH_SIZE=16
-NO_CH_CUR_EMB=false # true, false
-MODEL=transformer
+NO_CH_CUR_EMB=true # true, false
+MODEL=rnn # lstm, rnn, transformer
 LAYER_NUM=3
-# ----------- Clustering 參數設定 -----------
+# ----------- Clustering hyperparameters -----------
 CLUSTER_ANYWAY=false # true, false
 DO_CLUSTERING=false # true, false
 CLUSTERS=8
@@ -16,17 +15,18 @@ CLUSTERING_METHOD=gmm # kmeans, gmm
 CLUSTERING_SOFT_LABEL=0.2
 #CUSTER_NAME="Clustering_${CLUSTERING_METHOD}_${CLUSTERS}_${THRESHOLD}_label_${CLUSTERING_SOFT_LABEL}"
 CUSTER_NAME=None
-# ----------- Data 參數設定 -----------
+# ----------- Data hyperparameters -----------
 SAMPLE=0 # 20000, 4000, 1000, 0
 PREDICT_DATA=true # true, false
 CLS_TOKEN=false # true, false
-RESPLIT_DATA=false # true, false
-ONE_TOKEN_PER_DAY=true # true, false
-SEQ_LEN=50
+RESPLIT_DATA=true # true, false
+ONE_TOKEN_PER_DAY=false # true, false
+SEQ_LEN=200
 SOFT_LABEL=0
 TRUE_WEIGHT=1  # 1
+TRAIN_RATIO=0.9 # 0.9 0.7
 
-# ----------- 路徑設定 -----------
+# ----------- Data hyperparameters -----------
 if [ "$PREDICT_DATA" = true ]; then
     SAMPLE_TYPE="predict_data"
 else
@@ -58,9 +58,9 @@ fi
 
 TEST_NPZ=datasets/initial_competition/Esun_test/Esun_test_seq_${SEQ_LEN}${OTPD}.npz
 CLUSTERED_TRAIN_NPZ=${DATA_DIR}/train_cluster.npz
-# ======== 階段一：資料前處理 ========
+# ======== Stage 1：Data Preprocess ========
 echo "========================================"
-echo "🚀 Step 1: Running dataloader to generate NPZ files..."
+echo "?? Step 1: Running dataloader to generate NPZ files..."
 echo "========================================"
 
 python data_preprocess.py \
@@ -70,11 +70,12 @@ python data_preprocess.py \
 --one_token_per_day $ONE_TOKEN_PER_DAY \
 --predict_data $PREDICT_DATA \
 --soft_label $SOFT_LABEL \
---resplit_data $RESPLIT_DATA
+--resplit_data $RESPLIT_DATA \
+--train_ratio $TRAIN_RATIO
 
-# ======== 階段二：Clustering ========
+# ======== Stage 2：Clustering ========
 echo "========================================"
-echo "🚀 Step 2: 執行 clustering.py 對訓練資料進行聚類 ..."
+echo "Step 2:  clustering.py Clustering training data..."
 echo "========================================"
 
 if [ "${DO_CLUSTERING}" = "true" ]; then
@@ -88,25 +89,23 @@ if [ "${DO_CLUSTERING}" = "true" ]; then
         --soft_label $CLUSTERING_SOFT_LABEL
 	fi
 
-
 	if [ ! -f "${CLUSTERED_TRAIN_NPZ}" ]; then
-	  echo "❌ Clustering 失敗，找不到輸出檔案 ${CLUSTERED_TRAIN_NPZ}"
+	  echo "Clustering fail, output path not found ${CLUSTERED_TRAIN_NPZ}"
 	  exit 1
 	fi
 
-	echo "✅ Clustering 完成，已生成 ${CLUSTERED_TRAIN_NPZ}"
+	echo "Clustering finished, saved in  ${CLUSTERED_TRAIN_NPZ}"
 	echo ""
 fi
-
 
 if [ ! "${DO_CLUSTERING}" = "true" ]; then
-	echo "跳過 Clustering 階段"
+	echo "skip Clustering"
 	echo ""
 fi
 
-# ======== 階段三：模型訓練 ========
+# ======== Stage 3：training ========
 echo "========================================"
-echo "🚀 Step 3: 開始訓練模型 main_train.py ..."
+echo " Step 3: training model main_train.py ..."
 echo "========================================"
 
 python main_train.py \

@@ -617,7 +617,7 @@ def main(args):
 
                 for b, items in bucket_map_normal.items():
                     random.shuffle(items)
-                    split_idx = int(len(items) * 0.9)
+                    split_idx = int(len(items) * args.train_ratio)
                     train_data_normal.extend(items[:split_idx])
                     val_data_normal.extend(items[split_idx:])
 
@@ -629,7 +629,7 @@ def main(args):
 
                 for b, items in bucket_map_alert.items():
                     random.shuffle(items)
-                    split_idx = int(len(items) * 0.9)
+                    split_idx = int(len(items) * args.train_ratio)
                     train_data_alert.extend(items[:split_idx])
                     val_data_alert.extend(items[split_idx:])
 
@@ -744,6 +744,7 @@ if __name__ == "__main__":
     parser.add_argument("--predict_data", type=str2bool, default=False, help="是否使用待預測帳戶作為訓練資料")
     parser.add_argument("--soft_label", type=float, default=0, help="非警示帳戶 soft label 值 (若 <=0 則為 hard label)")
     parser.add_argument("--resplit_data", type=str2bool, default=False, help="是否將警示與正常帳戶各自按照交易筆數分群?")
+    parser.add_argument("--train_ratio", type=float, default=0.9, help="train test split ratio")
 
     args = parser.parse_args()
     

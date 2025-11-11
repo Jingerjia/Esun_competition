@@ -269,11 +269,26 @@ def main(args):
     # Model Setup (User-defined model)
     # -------------------------------------------
     # Example: from model import YourModel
-    from model import TransactionTransformer
-    if args.one_token_per_day:
-        model = TransactionTransformer(args, input_dim=8+2, num_layers=args.num_layers).to(device)
+    from model import TransactionTransformer, RNNSequenceClassifier
+    if args.model == "transformer":
+        if args.one_token_per_day:
+            model = TransactionTransformer(args, input_dim=8+2, num_layers=args.num_layers).to(device)
+        else:
+            model = TransactionTransformer(args, input_dim=10, num_layers=args.num_layers).to(device)
     else:
-        model = TransactionTransformer(args, input_dim=10, num_layers=args.num_layers).to(device)
+        # RNN / LSTM：沿用同一組 input_dim 規則（模型內會自行處理是否加 embedding）
+        if args.one_token_per_day:
+            rnn_input_dim = 8+2
+        else:
+            rnn_input_dim = 10
+        model = RNNSequenceClassifier(
+            args=args,
+            input_dim=rnn_input_dim,
+            rnn_hidden=args.rnn_hidden,
+            rnn_layers=args.rnn_layers,
+            bidirectional=args.bidirectional,
+            cell=args.model  # "rnn" 或 "lstm"
+            ).to(device)
     log_file.write("======================================== Model ======================================== \n")
     log_file.write(str(model))  # ✅ 轉為字串
     log_file.write("\n ======================================================================================= \n\n")
@@ -406,12 +421,15 @@ if __name__ == "__main__":
     p.add_argument("--batch_size", type=int, default=16)
     p.add_argument("--true_weight", type=float, default=1.0)
     p.add_argument("--cluster_name", type=str, default="")
-    p.add_argument("--model", type=str, default="transformer")
+    p.add_argument("--model", type=str, default="transformer", choices=["transformer", "rnn", "lstm"], help="選擇模型：transformer / rnn / lstm")
     p.add_argument("--predict_data", type=str2bool, default=False, help="是否使用待預測帳戶作為訓練資料")
     p.add_argument("--use_cluster", type=str2bool, default=False, help="是否先用 clustering 產生 soft label")
     p.add_argument("--CLS_token", type=str2bool, default=False, help="是否使用 CLS_token (若未使用則是平均)")
     p.add_argument("--without_channel_currency_emb", type=str2bool, default=False, help="是否不使用幣別與交易通路 embedding ")
     p.add_argument("--one_token_per_day", type=str2bool, default=False, help="是否將特徵改成每日彙整")
+    p.add_argument("--rnn_hidden", type=int, default=128)
+    p.add_argument("--rnn_layers", type=int, default=2)
+    p.add_argument("--bidirectional", type=str2bool, default=True)
     
     args = p.parse_args()
     main(args)
