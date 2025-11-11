@@ -4,7 +4,7 @@ EPOCHS=100
 SEED=42
 LEARNING_RATE=1e-5 # 1e-5 5e-6
 BATCH_SIZE=16
-NO_CH_CUR_EMB=false # true, false
+NO_CH_CUR_EMB=true # true, false
 MODEL=transformer
 LAYER_NUM=3
 # ----------- Clustering 參數設定 -----------
@@ -17,12 +17,12 @@ CLUSTERING_SOFT_LABEL=0.2
 #CUSTER_NAME="Clustering_${CLUSTERING_METHOD}_${CLUSTERS}_${THRESHOLD}_label_${CLUSTERING_SOFT_LABEL}"
 CUSTER_NAME=None
 # ----------- Data 參數設定 -----------
-SAMPLE=0 # 20000, 4000, 1000, 0
-PREDICT_DATA=true # true, false
+SAMPLE=20000 # 20000, 4000, 1000, 0
+PREDICT_DATA=false # true, false
 CLS_TOKEN=false # true, false
-RESPLIT_DATA=false # true, false
-ONE_TOKEN_PER_DAY=true # true, false
-SEQ_LEN=50
+RESPLIT_DATA=true # true, false
+ONE_TOKEN_PER_DAY=false # true, false
+SEQ_LEN=200
 SOFT_LABEL=0
 TRUE_WEIGHT=1  # 1
 

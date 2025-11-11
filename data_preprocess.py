@@ -536,13 +536,16 @@ def main(args):
                     else:
                         res = process_account(args, acct, meta, index_map[acct], global_exchange)
                     txn_cnt = int(predict_rank_df.loc[predict_rank_df["acct"] == acct, "total_txn_count"].values[0])
+                    if txn_cnt == 1: continue
                     res["bucket"] = bucket_txn_count(txn_cnt)
                     results.append(res)
             else:
                 # 篩選每日平均交易量 < 20
                 rank_df = pd.read_csv(RANK_DIR / "rank_玉山帳戶_交易筆數_asc.csv")
                 rank_df["avg_txn_per_day"] = rank_df["total_txn_count"] / rank_df["day_span"]
-                filtered = rank_df[rank_df["avg_txn_per_day"] < 20]
+                # filtered = rank_df[rank_df["avg_txn_per_day"] < 20 and rank_df["total_txn_count"]>1]
+                # filtered = rank_df[rank_df["total_txn_count"] > 1]
+                filtered = rank_df[(rank_df["avg_txn_per_day"] < 20) & (rank_df["total_txn_count"] > 1)]
                 candidate_accts = set(filtered["acct"].tolist()) - alert_accts - predict_accts
                 
                 # --- 建立 bucket 群組 ---

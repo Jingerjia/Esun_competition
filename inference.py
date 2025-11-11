@@ -21,9 +21,17 @@ def run_inference(args, model, npz_path, output_csv, device="cpu", threshold=0.5
     loader = get_dataloader(args, npz_path, batch_size=64, shuffle=False, device=device)
 
     accts, preds = [], []
+
     for batch in loader:
         x = batch["x"].to(device)
         
+        # 判斷每筆樣本的 token 數是否為 1
+        seq_len = x.shape[1]  # 假設 x 維度 = (B, T)
+
+        # 若你的資料是 padding 形式，且想以 "非零 token 數=1" 判斷，可改成：
+        # token_counts = (x != 0).sum(dim=1)
+        # one_token_mask = (token_counts == 1)
+
         if args.one_token_per_day:
             ch = None
             cu = None
@@ -31,12 +39,46 @@ def run_inference(args, model, npz_path, output_csv, device="cpu", threshold=0.5
             ch = batch["ch_idx"].to(device)
             cu = batch["cu_idx"].to(device)
 
-        logits = model(x, ch, cu)
-        probs = torch.sigmoid(logits).cpu().numpy().flatten()
-        labels = (probs > threshold).astype(int).tolist()
+        # ─────────────────────────────────────
+        # ✅ 做出 token=1 的 mask（逐筆判斷）
+        # ─────────────────────────────────────
+        token_counts = (x.abs().sum(dim=-1) != 0).sum(dim=1)  # shape (B,)
+        multi_token_mask = token_counts > 1
+        one_token_mask = ~multi_token_mask
+
+        # ─────────────────────────────────────
+
+        # 最終 labels (size = batch_size)
+        batch_labels = [0] * x.shape[0]            # 預先填滿 0，token=1 的會直接用
+
+        # ─────────────────────────────────────
+        # ✅ 只對 token > 1 的樣本丟進模型推論
+        # ─────────────────────────────────────
+        if multi_token_mask.any():
+            x_model = x[multi_token_mask]
+
+            if ch is not None:
+                ch_model = ch[multi_token_mask]
+                cu_model = cu[multi_token_mask]
+            else:
+                ch_model = None
+                cu_model = None
+
+            logits = model(x_model, ch_model, cu_model)
+            probs = torch.sigmoid(logits).cpu().numpy().flatten()
+            labels = (probs > threshold).astype(int).tolist()
+
+            # 把模型預測放回原本的 batch_labels
+            idxs = multi_token_mask.nonzero(as_tuple=True)[0]
+            for i, idx in enumerate(idxs):
+                batch_labels[idx] = labels[i]
+
+        # token=1 的樣本保持 batch_labels 中的 0
+        # ─────────────────────────────────────
 
         accts.extend(batch["acct"])
-        preds.extend(labels)
+        preds.extend(batch_labels)
+
 
     df = pd.DataFrame({
         "acct": accts,
@@ -68,15 +110,15 @@ if __name__ == "__main__":
     from model import TransactionTransformer
     import os
 
-    SAMPLE_SIZE = 20000
-    SEQ_LEN = 50
-    DATA_DIR = f"datasets/initial_competition/sample_{SAMPLE_SIZE}_seq_len_{SEQ_LEN}"
-    OUTPUT_DIR = f"mlkasnbklednksajdn"
+    # SAMPLE_SIZE = 20000
+    # SEQ_LEN = 50
+    # DATA_DIR = f"datasets/initial_competition/sample_{SAMPLE_SIZE}_seq_len_{SEQ_LEN}"
+    OUTPUT_DIR = f"test_inference"
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    model_path = "checkpoints/transformer/20251103_142828/ckpt/best_epoch20.pth"
-    val_path = f"{DATA_DIR}/val.npz"
-    test_path = f"datasets/initial_competition/Esun_test.npz"
+    model_path = "checkpoints/transformer//predict_data/predict_data_seq_200_layers_3_without_ch_cur_emb_20251109_233152/ckpt/best_epoch100.pth"
+    val_path = f"datasets/initial_competition/predict_data/predict_data_seq_len_200/val_resplit.npz"
+    test_path = f"datasets/initial_competition/Esun_test/Esun_test_seq_200.npz"
     val_output_csv = f"{OUTPUT_DIR}/val_inf.csv"
     test_output_csv = f"{OUTPUT_DIR}/Esun_inf.csv"
 
