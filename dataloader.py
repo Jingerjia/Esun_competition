@@ -47,38 +47,30 @@ class TransactionDataset(Dataset):
         m = self.mask[idx]
         y = self.labels[idx]
 
-        if self.one_token_per_day:
-            return {
-                "x": x,    # (T, feature_dim_without_embed)
-                "mask": m,
-                "label": y,
-                "acct": self.accts[idx]
-            }
-        else:
-            # channel / currency index (整數)
-            ch_idx = x[:, self.channel_idx].long().clamp(0, NUM_CHANNELS - 1)
-            cu_idx = x[:, self.currency_idx].long().clamp(0, NUM_CURRENCIES - 1)
+        # channel / currency index (整數)
+        ch_idx = x[:, self.channel_idx].long().clamp(0, NUM_CHANNELS - 1)
+        cu_idx = x[:, self.currency_idx].long().clamp(0, NUM_CURRENCIES - 1)
 
-            # 移除原 channel, currency 欄位 (只留 index)
-            x_before = torch.cat([
-                x[:, :self.channel_idx],
-                x[:, self.channel_idx+1:self.currency_idx],
-                x[:, self.currency_idx+1:]
-            ], dim=1)
+        # 移除原 channel, currency 欄位 (只留 index)
+        x_before = torch.cat([
+            x[:, :self.channel_idx],
+            x[:, self.channel_idx+1:self.currency_idx],
+            x[:, self.currency_idx+1:]
+        ], dim=1)
 
-            #if self.true_weight < 1 and y.item() < 1:
-                #x_before = x_before * self.true_weight
-                #print(f'第 {idx} 筆正常樣本的輸入乘以權重 {true_weight}')
+        #if self.true_weight < 1 and y.item() < 1:
+            #x_before = x_before * self.true_weight
+            #print(f'第 {idx} 筆正常樣本的輸入乘以權重 {true_weight}')
 
-            # 不嵌入，只回傳 index
-            return {
-                "x": x_before,    # (T, feature_dim_without_embed)
-                "ch_idx": ch_idx, # (T,)
-                "cu_idx": cu_idx, # (T,)
-                "mask": m,
-                "label": y,
-                "acct": self.accts[idx]
-            }
+        # 不嵌入，只回傳 index
+        return {
+            "x": x_before,    # (T, feature_dim_without_embed)
+            "ch_idx": ch_idx, # (T,)
+            "cu_idx": cu_idx, # (T,)
+            "mask": m,
+            "label": y,
+            "acct": self.accts[idx]
+        }
 
 
 # ========= DATALOADER =========

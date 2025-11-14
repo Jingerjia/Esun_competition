@@ -195,7 +195,7 @@ def main(args):
     else:
         prefix_layers = f"_{args.model}"
 
-    output_dir = f"{args.output_dir}/{prefix_data}/{prefix_data}{prefix_seq}{prefix_layers}train_ratio{args.train_ratio}_{timestamp}" 
+    output_dir = f"{args.output_dir}/{prefix_data}/{prefix_data}{prefix_seq}{prefix_layers}_train_ratio_{args.train_ratio}_{timestamp}" 
 
     csv_name = output_dir.split(f"_{timestamp}")[0].split('/')[-1]
     print(f"\n\ncsv_name = {csv_name}\n\n")
@@ -360,9 +360,9 @@ if __name__ == "__main__":
     p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--num_layers", type=int, default=3)
     p.add_argument("--batch_size", type=int, default=16)
-    p.add_argument("--model", type=str, default="transformer", choices=["transformer", "rnn", "lstm"], help="選擇模型：transformer / rnn / lstm")
+    p.add_argument("--model", type=str, default="rnn")
     p.add_argument("--predict_data", type=str2bool, default=False, help="是否使用待預測帳戶作為訓練資料")
-    p.add_argument("--CLS_token", type=str2bool, default=False, help="是否使用 CLS_token (若未使用則是平均)")
+    p.add_argument("--without_channel_currency_emb", type=str2bool, default=True, help="是否不使用交易通路與幣別做為特徵")
     p.add_argument("--rnn_hidden", type=int, default=128)
     p.add_argument("--rnn_layers", type=int, default=2)
     p.add_argument("--bidirectional", type=str2bool, default=True)

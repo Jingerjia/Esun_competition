@@ -10,6 +10,16 @@ import pandas as pd
 from dataloader import get_dataloader
 import pandas as pd
 
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')
+        
 @torch.no_grad()
 def run_inference(args, model, npz_path, output_csv, device="cpu", threshold=0.5):
     """
@@ -65,24 +75,29 @@ def run_inference(args, model, npz_path, output_csv, device="cpu", threshold=0.5
 
 if __name__ == "__main__":
     # 若要單獨執行：
-    from model import TransactionTransformer
-    import os
-
-    SAMPLE_SIZE = 20000
-    SEQ_LEN = 50
-    DATA_DIR = f"datasets/initial_competition/sample_{SAMPLE_SIZE}_seq_len_{SEQ_LEN}"
-    OUTPUT_DIR = f""
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-    model_path = "checkpoints/transformer/20251103_142828/ckpt/best_epoch20.pth"
-    val_path = f"{DATA_DIR}/val.npz"
-    test_path = f"datasets/initial_competition/Esun_test.npz"
-    val_output_csv = f"{OUTPUT_DIR}/val_inf.csv"
-    test_output_csv = f"{OUTPUT_DIR}/Esun_inf.csv"
+    import os, argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--ckpt", default=None)
+    p.add_argument("--output_dir", default="checkpoints/transformer")
+    p.add_argument("--rnn_hidden", type=int, default=128)
+    p.add_argument("--rnn_layers", type=int, default=2)
+    p.add_argument("--bidirectional", type=str2bool, default=True)
+    args = p.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = TransactionTransformer(input_dim=10).to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    from model import RNNSequenceClassifier
+    model = RNNSequenceClassifier(
+        args=args,
+        input_dim=8,
+        rnn_hidden=args.rnn_hidden,
+        rnn_layers=args.rnn_layers,
+        bidirectional=args.bidirectional,
+        ).to(device)
+    model.load_state_dict(torch.load(args.ckpt, map_location=device))
+    output_dir = ""
+    csv_name = "inference.csv"
+    test_output_csv = f"{output_dir}/{csv_name}"
 
-    #run_inference(model, val_path, val_output_csv, device=device)
-    run_inference(model, test_path, test_output_csv, device=device)
+    _, alert_count = run_inference(args, model, args.test_npz, test_output_csv, device=device)
+    
+    print(f"alert_count: {alert_count}")

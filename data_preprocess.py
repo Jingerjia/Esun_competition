@@ -254,14 +254,8 @@ def flatten_tokens(args, dataset, alert_accts, mode="train", soft_label=0.3):
         tokens.append(tok)
         masks.append(r["mask"])
         label = 1 if r["acct"] in alert_accts else 0 # 標籤：警示帳戶為1，其餘0
-
         labels.append(label)
         accts.append(r["acct"])
-
-    if mode == "train" and soft_label > 0:
-        print(f"mode={mode}, soft_label = {soft_label}, use_soft_label")
-    else:
-        print(f"mode={mode}, soft_label = {soft_label}, without_soft_label")
 
     return (
         np.array(tokens, dtype=np.float32),
@@ -282,24 +276,17 @@ def main(args):
     random.seed(seed)
     np.random.seed(seed)
 
-    # 自動建立資料資料夾（依 sample_size、seq_len、soft_label 命名）
-    if args.predict_data:
-        sample_dir = f'predict_data'
-    else:
-        sample_dir = f'sample_{args.sample_size}'
+    data_dir = args.data_dir
+    test_dir = args.test_dir
 
-    data_dir = Path(f"datasets/initial_competition/{sample_dir}/{sample_dir}_seq_len_{args.seq_len}")
-    json_dir = Path(f"datasets/initial_competition/{sample_dir}/{sample_dir}_seq_len_{args.seq_len}")
-    test_dir = f"datasets/initial_competition/Esun_test"
-    os.makedirs(json_dir, exist_ok=True)
     os.makedirs(test_dir, exist_ok=True)
     os.makedirs(data_dir, exist_ok=True)
 
-    TRAIN_JSON = f"{json_dir}/train.json"
-    TRAIN_NPZ = data_dir / f'train.npz'
+    TRAIN_JSON = f"{data_dir}/train.json"
+    TRAIN_NPZ = f"{data_dir}/train.npz"
 
-    VAL_JSON = f"{json_dir}/val.json"
-    VAL_NPZ = data_dir / f'val.npz'
+    VAL_JSON = f"{data_dir}/val.json"
+    VAL_NPZ = f"{data_dir}/val.npz"
 
     TEST_JSON = f"datasets/initial_competition/Esun_test/Esun_test_seq_{seq_len}.json"
     TEST_NPZ = f"datasets/initial_competition/Esun_test/Esun_test_seq_{seq_len}.npz"
@@ -494,17 +481,15 @@ def main(args):
         print(f"Test.npz 已存在:{TEST_NPZ}")
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Data preprocessing pipeline for Esun competition")
-
-    # ✅ 可調整的參數
-    parser.add_argument("--sample_size", type=int, default=20000, help="抽樣帳戶數量")
-    parser.add_argument("--seq_len", type=int, default=100, help="每帳戶序列長度")
-    parser.add_argument("--seed", type=int, default=42, help="random seed")
-    parser.add_argument("--predict_data", type=str2bool, default=False, help="是否使用待預測帳戶作為訓練資料")
-    parser.add_argument("--soft_label", type=float, default=0, help="非警示帳戶 soft label 值 (若 <=0 則為 hard label)")
-    parser.add_argument("--train_ratio", type=float, default=0.9, help="train test split ratio")
-
-    args = parser.parse_args()
+    p = argparse.ArgumentParser(description="Data preprocessing pipeline for Esun competition")
+    p.add_argument("--data_dir", default="datasets/initial_competition/predict_data/predict_data_seq_len_200/train_ratio_0.9")
+    p.add_argument("--test_dir", default="datasets/initial_competition/Esun_test")
+    p.add_argument("--predict_data", type=str2bool, default=True, help="是否使用待預測帳戶作為訓練資料")
+    p.add_argument("--sample_size", type=int, default=0, help="抽樣帳戶數量")
+    p.add_argument("--seq_len", type=int, default=200, help="每帳戶序列長度")
+    p.add_argument("--seed", type=int, default=42, help="random seed")
+    p.add_argument("--train_ratio", type=float, default=0.9, help="train test split ratio")
+    args = p.parse_args()
     
     # 執行主流程
     main(args)
