@@ -189,13 +189,8 @@ def main(args):
         prefix_data = f"sample_{args.sample_size}"
     # prefix_seq
     prefix_seq = f"_seq_{args.seq_len}"
-    # prefix_layers
-    if args.model == "transformer":
-        prefix_layers = f"_layers_{args.num_layers}"
-    else:
-        prefix_layers = f"_{args.model}"
 
-    output_dir = f"{args.output_dir}/{prefix_data}/{prefix_data}{prefix_seq}{prefix_layers}_train_ratio_{args.train_ratio}_{timestamp}" 
+    output_dir = f"{args.output_dir}/{prefix_data}/{prefix_data}{prefix_seq}_train_ratio_{args.train_ratio}_{timestamp}" 
 
     csv_name = output_dir.split(f"_{timestamp}")[0].split('/')[-1]
     print(f"\n\ncsv_name = {csv_name}\n\n")
@@ -219,7 +214,7 @@ def main(args):
     labels = ["normal", "alert"]
     log_file.write(f"Labels: {labels}\n")
 
-    train_dl = get_dataloader(args, args.train_npz, batch_size=args.batch_size, shuffle=True, device=device, true_weight=args.true_weight)
+    train_dl = get_dataloader(args, args.train_npz, batch_size=args.batch_size, shuffle=True, device=device)
     val_dl   = get_dataloader(args, args.val_npz, batch_size=args.batch_size, shuffle=False, device=device)
     test_dl  = get_dataloader(args, args.test_npz, batch_size=args.batch_size, shuffle=False, device=device)
 
@@ -229,19 +224,15 @@ def main(args):
     # Model Setup (User-defined model)
     # -------------------------------------------
     # Example: from model import YourModel
-    from model import TransactionTransformer, RNNSequenceClassifier
-    if args.model == "transformer":
-        model = TransactionTransformer(args, input_dim=10, num_layers=args.num_layers).to(device)
-    else:
-        rnn_input_dim = 10
-        model = RNNSequenceClassifier(
-            args=args,
-            input_dim=rnn_input_dim,
-            rnn_hidden=args.rnn_hidden,
-            rnn_layers=args.rnn_layers,
-            bidirectional=args.bidirectional,
-            cell=args.model  # "rnn" 或 "lstm"
-            ).to(device)
+    from model import RNNSequenceClassifier
+    model = RNNSequenceClassifier(
+        args=args,
+        input_dim=8,
+        rnn_hidden=args.rnn_hidden,
+        rnn_layers=args.rnn_layers,
+        bidirectional=args.bidirectional,
+        cell=args.model  # "rnn" 或 "lstm"
+        ).to(device)
     log_file.write("======================================== Model ======================================== \n")
     log_file.write(str(model))  # ✅ 轉為字串
     log_file.write("\n ======================================================================================= \n\n")
@@ -358,7 +349,6 @@ if __name__ == "__main__":
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--epochs", type=int, default=100)
-    p.add_argument("--num_layers", type=int, default=3)
     p.add_argument("--batch_size", type=int, default=16)
     p.add_argument("--model", type=str, default="rnn")
     p.add_argument("--predict_data", type=str2bool, default=False, help="是否使用待預測帳戶作為訓練資料")

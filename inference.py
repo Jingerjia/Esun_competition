@@ -19,7 +19,7 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
-        
+
 @torch.no_grad()
 def run_inference(args, model, npz_path, output_csv, device="cpu", threshold=0.5):
     """
@@ -34,12 +34,8 @@ def run_inference(args, model, npz_path, output_csv, device="cpu", threshold=0.5
     for batch in loader:
         x = batch["x"].to(device)
         
-        if args.one_token_per_day:
-            ch = None
-            cu = None
-        else:
-            ch = batch["ch_idx"].to(device)
-            cu = batch["cu_idx"].to(device)
+        ch = batch["ch_idx"].to(device)
+        cu = batch["cu_idx"].to(device)
 
         logits = model(x, ch, cu)
         probs = torch.sigmoid(logits).cpu().numpy().flatten()

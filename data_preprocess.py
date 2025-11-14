@@ -425,7 +425,7 @@ def main(args):
 
         print("🔄 轉換成 token 序列中... (尚未 embedding)")
 
-        train_tokens, train_masks, train_labels, train_accts = flatten_tokens(args, train_data, alert_accts, mode="train", soft_label=args.soft_label)
+        train_tokens, train_masks, train_labels, train_accts = flatten_tokens(args, train_data, alert_accts, mode="train")
         np.savez(TRAIN_NPZ, tokens=train_tokens, mask=train_masks, label=train_labels, acct=train_accts)
         print(f"✅ 儲存完成: train.npz ({train_tokens.shape})")
 

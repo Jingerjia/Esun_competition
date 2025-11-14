@@ -22,8 +22,6 @@ class TransactionDataset(Dataset):
 
     def __init__(self, args, npz_path, device="cpu"):
         data = np.load(npz_path, allow_pickle=True)
-        self.true_weight = args.true_weight
-        self.one_token_per_day = args.one_token_per_day
         self.tokens = torch.tensor(data["tokens"], dtype=torch.float32)
         self.mask = torch.tensor(data["mask"], dtype=torch.int8)
         self.labels = torch.tensor(data["label"], dtype=torch.float32)
