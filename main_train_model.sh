@@ -5,6 +5,7 @@ LEARNING_RATE=1e-5 # 1e-5 5e-6
 BATCH_SIZE=16
 NO_CH_CUR_EMB=true # true, false
 MODEL=rnn # lstm, rnn, transformer
+DATA_GEN=FALSE
 TRAIN=TRUE
 # ----------- Data hyperparameters -----------
 SAMPLE=0 # 20000, 4000, 1000, 0
@@ -33,14 +34,20 @@ echo "========================================"
 echo "Step 1: Running dataloader to generate NPZ files..."
 echo "========================================"
 
-python data_preprocess.py \
---data_dir $DATA_DIR \
---test_dir $TEST_DIR \
---train_ratio $TRAIN_RATIO \
---predict_data $PREDICT_DATA \
---sample_size $SAMPLE \
---seq_len $SEQ_LEN \
---seed $SEED
+if [ "${DATA_GEN}" = "TRUE" ]; then
+    python data_preprocess.py \
+    --data_dir $DATA_DIR \
+    --test_dir $TEST_DIR \
+    --train_ratio $TRAIN_RATIO \
+    --predict_data $PREDICT_DATA \
+    --sample_size $SAMPLE \
+    --seq_len $SEQ_LEN \
+    --seed $seed
+else
+    echo "跳過資料生成"
+    TRAIN_NPZ=results/rnn/predict_data/train.npz
+    VAL_NPZ=results/rnn/predict_data/val.npz
+fi
 
 # ======== Stage 2：training ========
 echo "========================================"
@@ -63,7 +70,6 @@ python main_train.py \
     --lr $LEARNING_RATE \
     --batch_size $BATCH_SIZE \
     --model $MODEL \
-    --num_layers $LAYER_NUM \
     --sample_size $SAMPLE \
     --predict_data $PREDICT_DATA \
     --seq_len $SEQ_LEN
