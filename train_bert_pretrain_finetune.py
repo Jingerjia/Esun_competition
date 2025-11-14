@@ -18,6 +18,7 @@ from sklearn.metrics import precision_score, recall_score, f1_score
 # ============================================================
 # Load Data
 # ============================================================
+
 pretrain_npz_path = "datasets/initial_competition/sample_320000/sample_320000_seq_len_200/train_resplit.npz"
 finetune_npz_path = "datasets/initial_competition/predict_data/predict_data_seq_len_200/train_resplit.npz"
 val_npz_path      = "datasets/initial_competition/predict_data/predict_data_seq_len_200/val_resplit.npz"

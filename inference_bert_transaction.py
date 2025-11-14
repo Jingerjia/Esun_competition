@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 inference_bert_transaction.py
+載入 finetuned BERT 模型進行推論，輸出預測 CSV
 """
 import os
 import numpy as np
@@ -14,9 +15,10 @@ from tqdm import tqdm
 
 
 # ============================================================
-# ¼Ò«¬©w¸q
+# 模型定義
 # ============================================================
 class BertFeatureModel(nn.Module):
+    """預訓練：重建被遮蔽的 token"""
     def __init__(self, seq_len, feat_dim, hidden_size=256, num_layers=4, num_heads=8, ffn_size=512, dropout=0.1):
         super().__init__()
         config = BertConfig(
@@ -37,6 +39,7 @@ class BertFeatureModel(nn.Module):
         return self.projection(out.last_hidden_state)
 
 class BertSequenceClassifier(nn.Module):
+    """微調：序列分類"""
     def __init__(self, pretrained_encoder, feat_dim, hidden_size=256, dropout=0.1):
         super().__init__()
         self.encoder = pretrained_encoder
@@ -55,26 +58,26 @@ class BertSequenceClassifier(nn.Module):
         return self.classifier(pooled)
 
 # ============================================================
-# ³]©w
+# 設定
 # ============================================================
-npz_path = "datasets/initial_competition/Esun_test/Esun_test_seq_200.npz" # ©Î test ÀÉ®×
+npz_path = "datasets/initial_competition/Esun_test/Esun_test_seq_200.npz" # 或 test 檔案
 model_dir = "checkpoints/bert/finetuned"
 pretrain_dir = "checkpoints/bert/pretrained"
-model_name = "finetune_seq200_feat10_mask0.15_h256_l4_e100_1111_224243.pt"
+model_name = "finetune_seq200_feat10_mask0.15_h256_l4_e100_20251111_155438.pt"
 model_path = os.path.join(model_dir, model_name)
 output_csv = os.path.join(model_dir, model_name.replace("pt", "csv"))
 
 
 # ============================================================
-# ¸ü¤J¸ê®Æ
+# 載入資料
 # ============================================================
-print(f"npz_path: {npz_path}")
+print(f"📦 載入資料: {npz_path}")
 data = np.load(npz_path, allow_pickle=True)
 tokens = data["tokens"].astype(np.float32)
 mask = data["mask"].astype(np.int64)
 accts = data["acct"]
 num_samples, seq_len, feat_dim = tokens.shape
-print(f"? tokens shape: {tokens.shape}, mask: {mask.shape}")
+print(f"✅ tokens shape: {tokens.shape}, mask: {mask.shape}")
 
 
 batch_size = 32
@@ -96,7 +99,7 @@ pretrain_name = f"pretrain_seq{seq_len}_feat{feat_dim}_mask{mask_prob}_h{hidden_
 pretrain_path = os.path.join(pretrain_dir, pretrain_name)
 
 if os.path.exists(pretrain_path):
-    print(f"pretrain_path: {pretrain_path}")
+    print(f"📦 載入資料: {pretrain_path}")
     bert_model.load_state_dict(torch.load(pretrain_path, map_location=device))
     pretrained_encoder = bert_model.encoder
     print("Use pretrained encoder from:", pretrain_path)
@@ -105,7 +108,7 @@ else:
 
 # ============================================================
 # Dataset
-# ============================================================
+# ===========================================================
 class InferenceDataset(Dataset):
     def __init__(self, tokens, mask, accts):
         self.tokens = tokens
@@ -126,15 +129,15 @@ dataset = InferenceDataset(tokens, mask, accts)
 loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
 # ============================================================
-# ¸ü¤J¼Ò«¬
+# 載入模型
 # ============================================================
 model = BertSequenceClassifier(pretrained_encoder, feat_dim, hidden_size, dropout).to(device)
 model.load_state_dict(torch.load(model_path, map_location=device), strict=False)
 model.eval()
-print(f"model_path: {model_path}")
+print(f"✅ 已載入模型: {model_path}")
 
 # ============================================================
-# ±À½×
+# 推論
 # ============================================================
 preds, probs, acct_list = [], [], []
 
@@ -144,20 +147,20 @@ with torch.no_grad():
         m = batch["mask"].to(device)
         out = model(x, m)
         p = out.cpu().numpy().flatten()
-        labels = (p > 0.3).astype(int)
+        labels = (p > 0.5).astype(int)
         preds.extend(labels.tolist())
         probs.extend(p.tolist())
         acct_list.extend(batch["acct"])
 
 # ============================================================
-# Àx¦sµ²ªG
+# 儲存結果
 # ============================================================
 df = pd.DataFrame({
     "acct": acct_list,
     "label": preds
 })
 df.to_csv(output_csv, index=False)
-print(f"csv generated: {output_csv}")
+print(f"✅ 已輸出預測結果: {output_csv}")
 print(df.head())
-print("alert：", df["label"].sum())
-print("ratio：", df["label"].sum()/len(df))
+print("預警帳戶數：", df["label"].sum())
+print("預警帳戶比例：", df["label"].sum()/len(df))

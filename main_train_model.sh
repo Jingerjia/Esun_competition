@@ -17,7 +17,7 @@ CLUSTERING_SOFT_LABEL=0.2
 #CUSTER_NAME="Clustering_${CLUSTERING_METHOD}_${CLUSTERS}_${THRESHOLD}_label_${CLUSTERING_SOFT_LABEL}"
 CUSTER_NAME=None
 # ----------- Data 參數設定 -----------
-SAMPLE=20000 # 20000, 4000, 1000, 0
+SAMPLE=320000 # 20000, 4000, 1000, 0
 PREDICT_DATA=false # true, false
 CLS_TOKEN=false # true, false
 RESPLIT_DATA=true # true, false
@@ -72,6 +72,7 @@ python data_preprocess.py \
 --soft_label $SOFT_LABEL \
 --resplit_data $RESPLIT_DATA
 
+exit 1
 # ======== 階段二：Clustering ========
 echo "========================================"
 echo "🚀 Step 2: 執行 clustering.py 對訓練資料進行聚類 ..."
