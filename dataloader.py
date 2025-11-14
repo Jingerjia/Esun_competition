@@ -8,17 +8,6 @@ from torch.utils.data import Dataset, DataLoader
 import numpy as np
 from pathlib import Path
 
-# ========= CONFIG =========
-SAMPLE_SIZE = 20000
-SEQ_LEN = 50
-DATA_DIR = Path(f"datasets/initial_competition/sample_{SAMPLE_SIZE}_seq_len_{SEQ_LEN}")
-TRAIN_NPZ = DATA_DIR / "train.npz"
-TEST_NPZ = DATA_DIR / "test.npz"
-
-# embedding 維度設定
-EMBED_DIM_CHANNEL = 4
-EMBED_DIM_CURRENCY = 4
-
 # channel & currency embedding 的總種類數
 NUM_CHANNELS = 10   # ["PAD", "01", "02", "03", "04", "05", "06", "07", "99", "UNK"]
 NUM_CURRENCIES = 15 # 可根據你的實際幣別種類調整
@@ -28,7 +17,7 @@ NUM_CURRENCIES = 15 # 可根據你的實際幣別種類調整
 class TransactionDataset(Dataset):
     """
     將 dataloader.py 輸出的 npz 轉換為 Transformer 訓練可用格式
-    每筆樣本 shape: (SEQ_LEN, num_features)
+    每筆樣本 shape: (seq_len, num_features)
     """
 
     def __init__(self, args, npz_path, device="cpu"):
@@ -97,17 +86,3 @@ def get_dataloader(args, npz_path, batch_size=64, shuffle=True, device="cpu", tr
     dataset = TransactionDataset(args, npz_path, device=device)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=False)
     return loader
-
-
-# ========= 測試主程式 =========
-if __name__ == "__main__":
-    print("🔍 載入訓練資料...")
-    TRAIN_NPZ = "datasets/initial_competition/predict_data/predict_data_seq_len_50/train.npz"
-    #TRAIN_NPZ = "datasets/initial_competition/predict_data/predict_data_seq_len_50_soft_label_0.3/train.npz"
-    train_loader = get_dataloader(TRAIN_NPZ, batch_size=16, shuffle=True)
-
-    batch = next(iter(train_loader))
-    print("x shape:", batch["x"].shape)     # (B, 50, feature_dim)
-    print("mask shape:", batch["mask"].shape)
-    print("label shape:", batch["label"].shape)
-    print("acct[0]:", batch["acct"][0])

@@ -1,0 +1,151 @@
+===== Hyperparameters =====
+ckpt: None
+train_npz: datasets/initial_competition/predict_data/predict_data_seq_len_200/train_resplit.npz
+val_npz: datasets/initial_competition/predict_data/predict_data_seq_len_200/val_resplit.npz
+test_npz: datasets/initial_competition/Esun_test/Esun_test_seq_200.npz
+output_dir: checkpoints/rnn/
+sample_size: 0
+seq_len: 200
+soft_label: 0.0
+lr: 1e-05
+seed: 42
+epochs: 100
+num_layers: 3
+batch_size: 16
+true_weight: 1.0
+cluster_name: None
+model: rnn
+predict_data: True
+use_cluster: False
+CLS_token: False
+without_channel_currency_emb: True
+one_token_per_day: False
+rnn_hidden: 128
+rnn_layers: 2
+bidirectional: True
+Device: cuda
+===========================
+
+Labels: ['normal', 'alert']
+======================================== Model ======================================== 
+RNNSequenceClassifier(
+  (rnn): RNN(8, 128, num_layers=2, batch_first=True, dropout=0.1, bidirectional=True)
+  (fc_out): Sequential(
+    (0): Linear(in_features=256, out_features=128, bias=True)
+    (1): ReLU()
+    (2): Dropout(p=0.1, inplace=False)
+    (3): Linear(in_features=128, out_features=1, bias=True)
+  )
+)
+ ======================================================================================= 
+
+Epoch 1: Train Acc=82.72%, Val Acc=81.97%,Train F1=0.000, Val F1=0.000, Loss=0.5774
+Epoch 2: Train Acc=87.07%, Val Acc=85.71%,Train F1=0.557, Val F1=0.512, Loss=0.3874
+Epoch 3: Train Acc=87.89%, Val Acc=86.56%,Train F1=0.604, Val F1=0.568, Loss=0.3269
+Epoch 4: Train Acc=88.36%, Val Acc=87.07%,Train F1=0.621, Val F1=0.582, Loss=0.3112
+Epoch 5: Train Acc=88.91%, Val Acc=87.59%,Train F1=0.639, Val F1=0.601, Loss=0.2993
+Epoch 6: Train Acc=88.61%, Val Acc=87.41%,Train F1=0.671, Val F1=0.648, Loss=0.2887
+Epoch 7: Train Acc=89.68%, Val Acc=88.78%,Train F1=0.666, Val F1=0.649, Loss=0.2787
+Epoch 8: Train Acc=90.20%, Val Acc=89.12%,Train F1=0.691, Val F1=0.673, Loss=0.2679
+Epoch 9: Train Acc=90.74%, Val Acc=89.46%,Train F1=0.704, Val F1=0.684, Loss=0.2608
+Epoch 10: Train Acc=91.01%, Val Acc=89.97%,Train F1=0.721, Val F1=0.709, Loss=0.2527
+Epoch 11: Train Acc=91.42%, Val Acc=89.97%,Train F1=0.729, Val F1=0.706, Loss=0.2458
+Epoch 12: Train Acc=91.59%, Val Acc=89.80%,Train F1=0.744, Val F1=0.712, Loss=0.2425
+Epoch 13: Train Acc=91.59%, Val Acc=90.65%,Train F1=0.737, Val F1=0.724, Loss=0.2399
+Epoch 14: Train Acc=91.88%, Val Acc=90.31%,Train F1=0.753, Val F1=0.727, Loss=0.2351
+Epoch 15: Train Acc=91.86%, Val Acc=90.14%,Train F1=0.755, Val F1=0.726, Loss=0.2312
+Epoch 16: Train Acc=91.88%, Val Acc=90.82%,Train F1=0.753, Val F1=0.738, Loss=0.2295
+Epoch 17: Train Acc=92.30%, Val Acc=90.82%,Train F1=0.762, Val F1=0.733, Loss=0.2264
+Epoch 18: Train Acc=91.86%, Val Acc=90.99%,Train F1=0.758, Val F1=0.749, Loss=0.2228
+Epoch 19: Train Acc=92.24%, Val Acc=91.16%,Train F1=0.757, Val F1=0.737, Loss=0.2211
+Epoch 20: Train Acc=92.32%, Val Acc=91.33%,Train F1=0.764, Val F1=0.749, Loss=0.2206
+Epoch 21: Train Acc=92.15%, Val Acc=91.50%,Train F1=0.763, Val F1=0.762, Loss=0.2166
+Epoch 22: Train Acc=92.17%, Val Acc=91.50%,Train F1=0.765, Val F1=0.762, Loss=0.2160
+Epoch 23: Train Acc=92.38%, Val Acc=90.99%,Train F1=0.776, Val F1=0.753, Loss=0.2149
+Epoch 24: Train Acc=92.49%, Val Acc=91.67%,Train F1=0.769, Val F1=0.759, Loss=0.2122
+Epoch 25: Train Acc=92.26%, Val Acc=90.99%,Train F1=0.771, Val F1=0.751, Loss=0.2093
+Epoch 26: Train Acc=92.47%, Val Acc=91.16%,Train F1=0.779, Val F1=0.757, Loss=0.2096
+Epoch 27: Train Acc=92.57%, Val Acc=91.50%,Train F1=0.778, Val F1=0.766, Loss=0.2068
+Epoch 28: Train Acc=91.84%, Val Acc=90.48%,Train F1=0.772, Val F1=0.761, Loss=0.2049
+Epoch 29: Train Acc=92.69%, Val Acc=91.33%,Train F1=0.778, Val F1=0.756, Loss=0.2069
+Epoch 30: Train Acc=92.92%, Val Acc=91.84%,Train F1=0.780, Val F1=0.767, Loss=0.2053
+Epoch 31: Train Acc=92.57%, Val Acc=91.67%,Train F1=0.779, Val F1=0.772, Loss=0.2005
+Epoch 32: Train Acc=92.82%, Val Acc=91.67%,Train F1=0.789, Val F1=0.774, Loss=0.2013
+Epoch 33: Train Acc=92.80%, Val Acc=91.67%,Train F1=0.777, Val F1=0.763, Loss=0.1991
+Epoch 34: Train Acc=92.90%, Val Acc=92.35%,Train F1=0.786, Val F1=0.789, Loss=0.1996
+Epoch 35: Train Acc=92.17%, Val Acc=91.33%,Train F1=0.780, Val F1=0.775, Loss=0.1976
+Epoch 36: Train Acc=92.98%, Val Acc=92.01%,Train F1=0.780, Val F1=0.766, Loss=0.1960
+Epoch 37: Train Acc=92.69%, Val Acc=91.67%,Train F1=0.787, Val F1=0.774, Loss=0.1953
+Epoch 38: Train Acc=92.98%, Val Acc=92.35%,Train F1=0.788, Val F1=0.787, Loss=0.1964
+Epoch 39: Train Acc=92.71%, Val Acc=91.67%,Train F1=0.782, Val F1=0.763, Loss=0.1932
+Epoch 40: Train Acc=92.90%, Val Acc=92.86%,Train F1=0.789, Val F1=0.802, Loss=0.1924
+Epoch 41: Train Acc=92.82%, Val Acc=92.18%,Train F1=0.786, Val F1=0.781, Loss=0.1919
+Epoch 42: Train Acc=92.61%, Val Acc=91.67%,Train F1=0.788, Val F1=0.778, Loss=0.1904
+Epoch 43: Train Acc=92.96%, Val Acc=92.52%,Train F1=0.790, Val F1=0.790, Loss=0.1915
+Epoch 44: Train Acc=93.17%, Val Acc=92.86%,Train F1=0.794, Val F1=0.800, Loss=0.1905
+Epoch 45: Train Acc=93.11%, Val Acc=92.69%,Train F1=0.792, Val F1=0.792, Loss=0.1894
+Epoch 46: Train Acc=93.30%, Val Acc=92.86%,Train F1=0.796, Val F1=0.800, Loss=0.1893
+Epoch 47: Train Acc=93.05%, Val Acc=92.35%,Train F1=0.790, Val F1=0.783, Loss=0.1893
+Epoch 48: Train Acc=93.03%, Val Acc=92.01%,Train F1=0.779, Val F1=0.761, Loss=0.1880
+Epoch 49: Train Acc=92.86%, Val Acc=92.01%,Train F1=0.796, Val F1=0.789, Loss=0.1850
+Epoch 50: Train Acc=92.51%, Val Acc=91.67%,Train F1=0.792, Val F1=0.784, Loss=0.1853
+Epoch 51: Train Acc=93.17%, Val Acc=92.52%,Train F1=0.790, Val F1=0.786, Loss=0.1859
+Epoch 52: Train Acc=93.01%, Val Acc=91.67%,Train F1=0.778, Val F1=0.751, Loss=0.1842
+Epoch 53: Train Acc=93.01%, Val Acc=92.69%,Train F1=0.792, Val F1=0.796, Loss=0.1846
+Epoch 54: Train Acc=92.99%, Val Acc=92.52%,Train F1=0.793, Val F1=0.792, Loss=0.1877
+Epoch 55: Train Acc=93.07%, Val Acc=92.35%,Train F1=0.792, Val F1=0.785, Loss=0.1843
+Epoch 56: Train Acc=93.17%, Val Acc=92.69%,Train F1=0.791, Val F1=0.790, Loss=0.1858
+Epoch 57: Train Acc=92.99%, Val Acc=91.84%,Train F1=0.778, Val F1=0.758, Loss=0.1870
+Epoch 58: Train Acc=92.99%, Val Acc=92.52%,Train F1=0.795, Val F1=0.794, Loss=0.1850
+Epoch 59: Train Acc=93.15%, Val Acc=92.52%,Train F1=0.796, Val F1=0.792, Loss=0.1862
+Epoch 60: Train Acc=93.23%, Val Acc=91.84%,Train F1=0.790, Val F1=0.762, Loss=0.1827
+Epoch 61: Train Acc=93.09%, Val Acc=93.03%,Train F1=0.796, Val F1=0.806, Loss=0.1833
+Epoch 62: Train Acc=92.80%, Val Acc=91.84%,Train F1=0.796, Val F1=0.782, Loss=0.1825
+Epoch 63: Train Acc=93.24%, Val Acc=92.69%,Train F1=0.794, Val F1=0.790, Loss=0.1834
+Epoch 64: Train Acc=93.03%, Val Acc=92.52%,Train F1=0.791, Val F1=0.788, Loss=0.1833
+Epoch 65: Train Acc=93.11%, Val Acc=92.86%,Train F1=0.798, Val F1=0.802, Loss=0.1815
+Epoch 66: Train Acc=93.11%, Val Acc=91.84%,Train F1=0.785, Val F1=0.762, Loss=0.1831
+Epoch 67: Train Acc=93.05%, Val Acc=92.69%,Train F1=0.792, Val F1=0.794, Loss=0.1826
+Epoch 68: Train Acc=93.21%, Val Acc=92.69%,Train F1=0.802, Val F1=0.798, Loss=0.1829
+Epoch 69: Train Acc=93.15%, Val Acc=92.86%,Train F1=0.794, Val F1=0.798, Loss=0.1825
+Epoch 70: Train Acc=93.19%, Val Acc=92.01%,Train F1=0.789, Val F1=0.768, Loss=0.1826
+Epoch 71: Train Acc=92.99%, Val Acc=92.69%,Train F1=0.793, Val F1=0.798, Loss=0.1828
+Epoch 72: Train Acc=93.01%, Val Acc=92.69%,Train F1=0.800, Val F1=0.802, Loss=0.1806
+Epoch 73: Train Acc=93.15%, Val Acc=92.69%,Train F1=0.800, Val F1=0.798, Loss=0.1827
+Epoch 74: Train Acc=93.11%, Val Acc=92.86%,Train F1=0.795, Val F1=0.802, Loss=0.1811
+Epoch 75: Train Acc=93.23%, Val Acc=92.86%,Train F1=0.796, Val F1=0.800, Loss=0.1823
+Epoch 76: Train Acc=93.30%, Val Acc=93.03%,Train F1=0.803, Val F1=0.806, Loss=0.1817
+Epoch 77: Train Acc=93.26%, Val Acc=92.86%,Train F1=0.800, Val F1=0.802, Loss=0.1814
+Epoch 78: Train Acc=93.21%, Val Acc=92.69%,Train F1=0.798, Val F1=0.796, Loss=0.1804
+Epoch 79: Train Acc=93.15%, Val Acc=92.52%,Train F1=0.792, Val F1=0.786, Loss=0.1819
+Epoch 80: Train Acc=93.11%, Val Acc=92.52%,Train F1=0.792, Val F1=0.788, Loss=0.1799
+Epoch 81: Train Acc=93.17%, Val Acc=93.03%,Train F1=0.795, Val F1=0.804, Loss=0.1797
+Epoch 82: Train Acc=93.21%, Val Acc=92.52%,Train F1=0.792, Val F1=0.784, Loss=0.1809
+Epoch 83: Train Acc=93.23%, Val Acc=92.69%,Train F1=0.793, Val F1=0.790, Loss=0.1814
+Epoch 84: Train Acc=92.47%, Val Acc=91.84%,Train F1=0.793, Val F1=0.789, Loss=0.1785
+Epoch 85: Train Acc=93.13%, Val Acc=92.86%,Train F1=0.801, Val F1=0.806, Loss=0.1798
+Epoch 86: Train Acc=93.23%, Val Acc=92.69%,Train F1=0.799, Val F1=0.798, Loss=0.1816
+Epoch 87: Train Acc=93.19%, Val Acc=93.03%,Train F1=0.798, Val F1=0.808, Loss=0.1805
+Epoch 88: Train Acc=93.09%, Val Acc=92.69%,Train F1=0.795, Val F1=0.796, Loss=0.1781
+Epoch 89: Train Acc=93.23%, Val Acc=92.52%,Train F1=0.791, Val F1=0.784, Loss=0.1795
+Epoch 90: Train Acc=93.21%, Val Acc=92.69%,Train F1=0.797, Val F1=0.794, Loss=0.1793
+Epoch 91: Train Acc=93.24%, Val Acc=92.69%,Train F1=0.794, Val F1=0.794, Loss=0.1793
+Epoch 92: Train Acc=93.19%, Val Acc=92.69%,Train F1=0.796, Val F1=0.794, Loss=0.1818
+Epoch 93: Train Acc=93.28%, Val Acc=92.69%,Train F1=0.796, Val F1=0.790, Loss=0.1790
+Epoch 94: Train Acc=93.01%, Val Acc=92.69%,Train F1=0.800, Val F1=0.802, Loss=0.1797
+Epoch 95: Train Acc=93.28%, Val Acc=93.03%,Train F1=0.802, Val F1=0.808, Loss=0.1764
+Epoch 96: Train Acc=92.90%, Val Acc=92.01%,Train F1=0.798, Val F1=0.791, Loss=0.1769
+Epoch 97: Train Acc=93.32%, Val Acc=93.03%,Train F1=0.804, Val F1=0.808, Loss=0.1794
+Epoch 98: Train Acc=93.36%, Val Acc=92.18%,Train F1=0.796, Val F1=0.777, Loss=0.1780
+Epoch 99: Train Acc=93.19%, Val Acc=92.18%,Train F1=0.788, Val F1=0.772, Loss=0.1810
+Epoch 100: Train Acc=93.26%, Val Acc=92.52%,Train F1=0.801, Val F1=0.792, Loss=0.1772
+Final Val Acc = 93.03%
+normal	P=0.958	R=0.956	F1=0.957
+alert	P=0.804	R=0.811	F1=0.808
+
+===== Summary =====
+Total training time: 2.18 minutes
+Model size: 0.17M parameters
+Best model: checkpoints/rnn//predict_data/predict_data_seq_200_layers_3_without_ch_cur_emb_20251110_235337/ckpt/best_epoch87.pth
+alert_count: 176
+=====================

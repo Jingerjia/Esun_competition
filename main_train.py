@@ -42,29 +42,18 @@ def set_seed(seed):
 # =====================
 def train_one_epoch(args, model, dataloader, optimizer, criterion, device):
     """
-    x: (B, T, D)
+    x: (B, T, D) Batch size, Transaction amount, Dimensions
     """
     model.train()
     losses = []
     pbar = tqdm(dataloader, desc="Training", leave=False)
     for batch in pbar:
 
-        if args.one_token_per_day:
-            ch = None
-            cu = None
-        else:
-            ch = batch["ch_idx"].to(device)
-            cu = batch["cu_idx"].to(device)
+        ch = batch["ch_idx"].to(device) # channel 交易通路 
+        cu = batch["cu_idx"].to(device) # currency 幣別
 
         x = batch["x"].to(device)
         y = batch["label"].float().unsqueeze(1).to(device)
-        #print(f"\n\nx.shape = {x.shape}\n\n")
-
-        if args.true_weight < 1:
-            #print(f"len([y != 1]) ={len([y != 1])}")
-            #print(f"[y != 1] ={[y != 1]}")
-            x[(y != 1).squeeze(), :, -3:-1] *= args.true_weight
-
         optimizer.zero_grad()
         logits = model(x, ch, cu)
         loss = criterion(logits, y)
@@ -80,10 +69,7 @@ def evaluate(args, model, dataloader, device, thresholds = 0.5):
     with torch.no_grad():
         for batch in dataloader:
             y = (batch["label"] >= thresholds).to(torch.int64).cpu().numpy().tolist()
-            if args.one_token_per_day:
-                logits = model(batch["x"].to(device), None, None)
-            else:
-                logits = model(batch["x"].to(device), batch["ch_idx"].to(device), batch["cu_idx"].to(device))
+            logits = model(batch["x"].to(device), batch["ch_idx"].to(device), batch["cu_idx"].to(device))
             prob = torch.sigmoid(logits).cpu().numpy().flatten()
             pred = (prob > thresholds).astype(int).tolist()
             preds += pred
@@ -118,7 +104,6 @@ def plot_confusion_matrix(cm, labels, save_path, title="Confusion Matrix"):
     plt.close()
 
 def plot_metrics(epochs, train_accs, val_accs, train_f1s, val_f1s, save_path, train_losses=None):
-    # ⚠️ 保證都是 CPU 上的 numpy
     train_accs = [t.detach().cpu().item() if torch.is_tensor(t) else t for t in train_accs]
     val_accs = [t.detach().cpu().item() if torch.is_tensor(t) else t for t in val_accs]
     train_f1s = [t.detach().cpu().item() if torch.is_tensor(t) else t for t in train_f1s]
@@ -182,7 +167,7 @@ def check_label_distribution(dataloader):
             print("   - 存在 NaN 標籤")
         if has_outlier:
             print("   - 有標籤超出 [0, 1] 範圍")
-        raise ValueError("❌ 標籤資料異常，請檢查 clustering 或 npz 檔案內容！")
+        raise ValueError("❌ 標籤資料異常，請檢查 npz 檔案內容！")
 
     print("------------------------------------------------------\n")
 
@@ -193,17 +178,6 @@ def main(args):
     start_time = time.time()
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    cluster_npz = args.train_npz.replace(".npz", f"_cluster.npz")
-    if not args.use_cluster:
-        print("跳過 clustering，直接使用原始標籤資料。")
-    elif os.path.exists(cluster_npz):
-        args.train_npz = cluster_npz
-        print("使用 clustering 產生的 soft labels")
-        print(f"training data path: {args.train_npz}")
-    else:
-        print(f"檔案 {cluster_npz} 不存在")
-        print("跳過 clustering，直接使用原始標籤資料。")
 
     # Prepare output dir
     timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
@@ -216,26 +190,12 @@ def main(args):
     # prefix_seq
     prefix_seq = f"_seq_{args.seq_len}"
     # prefix_layers
-    prefix_layers = f"_layers_{args.num_layers}"
-    # prefix_soft_label
-    if args.soft_label > 0:
-        prefix_soft_label = f"_soft_label_{args.soft_label}"
-    elif args.true_weight < 1:
-        prefix_soft_label = f"_true_weight_{args.true_weight}"
+    if args.model == "transformer":
+        prefix_layers = f"_layers_{args.num_layers}"
     else:
-        prefix_soft_label = ""
-    # prefix_use_cluster
-    if args.use_cluster:
-        prefix_use_cluster = f"_{args.cluster_name}" 
-    else:
-        prefix_use_cluster = ""
-    # prefix_without_channel_currency_emb
-    if args.without_channel_currency_emb and not args.one_token_per_day:
-        prefix_without_ch_cur_emb = "_without_ch_cur_emb"
-    else:
-        prefix_without_ch_cur_emb = ""
+        prefix_layers = f"_{args.model}"
 
-    output_dir = f"{args.output_dir}/{prefix_data}/{prefix_data}{prefix_seq}{prefix_layers}{prefix_soft_label}{prefix_use_cluster}{prefix_without_ch_cur_emb}_{timestamp}" 
+    output_dir = f"{args.output_dir}/{prefix_data}/{prefix_data}{prefix_seq}{prefix_layers}train_ratio{args.train_ratio}_{timestamp}" 
 
     csv_name = output_dir.split(f"_{timestamp}")[0].split('/')[-1]
     print(f"\n\ncsv_name = {csv_name}\n\n")
@@ -271,16 +231,9 @@ def main(args):
     # Example: from model import YourModel
     from model import TransactionTransformer, RNNSequenceClassifier
     if args.model == "transformer":
-        if args.one_token_per_day:
-            model = TransactionTransformer(args, input_dim=8+2, num_layers=args.num_layers).to(device)
-        else:
-            model = TransactionTransformer(args, input_dim=10, num_layers=args.num_layers).to(device)
+        model = TransactionTransformer(args, input_dim=10, num_layers=args.num_layers).to(device)
     else:
-        # RNN / LSTM：沿用同一組 input_dim 規則（模型內會自行處理是否加 embedding）
-        if args.one_token_per_day:
-            rnn_input_dim = 8+2
-        else:
-            rnn_input_dim = 10
+        rnn_input_dim = 10
         model = RNNSequenceClassifier(
             args=args,
             input_dim=rnn_input_dim,
@@ -346,7 +299,7 @@ def main(args):
 
     # Reload best model
     model.load_state_dict(torch.load(best_ckpt))
-    test_acc, test_f1_alert, test_prec_alert, test_rec_alert, preds, trues = evaluate(args, model, val_dl, device)
+    test_acc, _, _, _, preds, trues = evaluate(args, model, val_dl, device)
     log_file.write(f"Final Val Acc = {test_acc:.2f}%\n")
 
     cm = confusion_matrix(trues, preds)
@@ -376,20 +329,8 @@ def main(args):
 
     val_output_csv = f"{output_dir}/val_inf.csv"
     run_inference(args, model, args.val_npz, val_output_csv, device=device)
-    """
-    if args.predict_data:
-        test_output_name = f"{output_dir}/predict_data_seq_{args.seq_len}"
-    else:
-        test_output_name = f"{output_dir}/sample_{args.sample_size}_seq_{args.seq_len}"
-
-    if args.soft_label:
-        test_output_csv = f"{test_output_name}_soft_label_{args.soft_label}.csv"
-    else:
-        test_output_csv = f"{test_output_name}.csv"
-    """
     
     test_output_csv = f"{output_dir}/{csv_name}.csv"
-
     _, alert_count = run_inference(args, model, args.test_npz, test_output_csv, device=device)
     
     log_file.write(f"alert_count: {alert_count}")
@@ -413,20 +354,15 @@ if __name__ == "__main__":
     p.add_argument("--output_dir", default="checkpoints/transformer")
     p.add_argument("--sample_size", type=int, default=4780)
     p.add_argument("--seq_len", type=int, default=100)
-    p.add_argument("--soft_label", type=float, default=0, help="非警示帳戶 soft label 值 (若 <=0 則為 hard label)")
+    p.add_argument("--train_ratio", type=float, default=0.9, help="train test split ratio")
     p.add_argument("--lr", type=float, default=1e-4)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--num_layers", type=int, default=3)
     p.add_argument("--batch_size", type=int, default=16)
-    p.add_argument("--true_weight", type=float, default=1.0)
-    p.add_argument("--cluster_name", type=str, default="")
     p.add_argument("--model", type=str, default="transformer", choices=["transformer", "rnn", "lstm"], help="選擇模型：transformer / rnn / lstm")
     p.add_argument("--predict_data", type=str2bool, default=False, help="是否使用待預測帳戶作為訓練資料")
-    p.add_argument("--use_cluster", type=str2bool, default=False, help="是否先用 clustering 產生 soft label")
     p.add_argument("--CLS_token", type=str2bool, default=False, help="是否使用 CLS_token (若未使用則是平均)")
-    p.add_argument("--without_channel_currency_emb", type=str2bool, default=False, help="是否不使用幣別與交易通路 embedding ")
-    p.add_argument("--one_token_per_day", type=str2bool, default=False, help="是否將特徵改成每日彙整")
     p.add_argument("--rnn_hidden", type=int, default=128)
     p.add_argument("--rnn_layers", type=int, default=2)
     p.add_argument("--bidirectional", type=str2bool, default=True)

@@ -71,7 +71,7 @@ if __name__ == "__main__":
     SAMPLE_SIZE = 20000
     SEQ_LEN = 50
     DATA_DIR = f"datasets/initial_competition/sample_{SAMPLE_SIZE}_seq_len_{SEQ_LEN}"
-    OUTPUT_DIR = f"mlkasnbklednksajdn"
+    OUTPUT_DIR = f""
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     model_path = "checkpoints/transformer/20251103_142828/ckpt/best_epoch20.pth"
