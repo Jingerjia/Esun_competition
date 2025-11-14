@@ -6,11 +6,12 @@ BATCH_SIZE=16
 NO_CH_CUR_EMB=true # true, false
 MODEL=rnn # lstm, rnn, transformer
 LAYER_NUM=3
+TRAIN=TRUE
 # ----------- Clustering hyperparameters -----------
-CLUSTER_ANYWAY=false # true, false
-DO_CLUSTERING=false # true, false
-CLUSTERS=8
-THRESHOLD=0.6
+DO_CLUSTERING=true # true, false
+CLUSTER_ANYWAY=true # true, false
+CLUSTERING_METHOD=spectral
+THRESHOLD=0.5
 CLUSTERING_METHOD=gmm # kmeans, gmm
 CLUSTERING_SOFT_LABEL=0.2
 #CUSTER_NAME="Clustering_${CLUSTERING_METHOD}_${CLUSTERS}_${THRESHOLD}_label_${CLUSTERING_SOFT_LABEL}"
@@ -47,7 +48,6 @@ else
     OTPD=""
 fi
 
-
 if [ "${RESPLIT_DATA}" = "true" ]; then
     TRAIN_NPZ=$DATA_DIR/train${OTPD}_resplit.npz
     VAL_NPZ=$DATA_DIR/val${OTPD}_resplit.npz
@@ -57,7 +57,7 @@ else
 fi
 
 TEST_NPZ=datasets/initial_competition/Esun_test/Esun_test_seq_${SEQ_LEN}${OTPD}.npz
-CLUSTERED_TRAIN_NPZ=${DATA_DIR}/train_cluster.npz
+CLUSTERED_TRAIN_NPZ="${DATA_DIR}/train_${CLUSTERING_METHOD}_n${CLUSTERS}_thresh${THRESHOLD}.npz"
 # ======== Stage 1：Data Preprocess ========
 echo "========================================"
 echo "?? Step 1: Running dataloader to generate NPZ files..."
@@ -82,11 +82,13 @@ if [ "${DO_CLUSTERING}" = "true" ]; then
 	if [ ! -f "${CLUSTERED_TRAIN_NPZ}" ] || [ "${CLUSTER_ANYWAY}" = "true" ]; then
 	python clustering.py \
         --input_npz ${TRAIN_NPZ} \
+        --output_npz ${CLUSTERED_TRAIN_NPZ} \
         --n_clusters ${CLUSTERS} \
         --method ${CLUSTERING_METHOD} \
         --batch_size 128 \
         --threshold $THRESHOLD \
-        --soft_label $CLUSTERING_SOFT_LABEL
+        --soft_label $CLUSTERING_SOFT_LABEL \
+        --seed $SEED
 	fi
 
 	if [ ! -f "${CLUSTERED_TRAIN_NPZ}" ]; then
@@ -96,6 +98,7 @@ if [ "${DO_CLUSTERING}" = "true" ]; then
 
 	echo "Clustering finished, saved in  ${CLUSTERED_TRAIN_NPZ}"
 	echo ""
+    TRAIN_NPZ=$CLUSTERED_TRAIN_NPZ
 fi
 
 if [ ! "${DO_CLUSTERING}" = "true" ]; then
@@ -107,6 +110,12 @@ fi
 echo "========================================"
 echo " Step 3: training model main_train.py ..."
 echo "========================================"
+
+echo "TRAIN_NPZ: $TRAIN_NPZ"
+if [ ! "${TRAIN}" = "TRUE" ]; then
+	echo "暫不訓練"
+	exit 1
+fi
 
 python main_train.py \
     --output_dir checkpoints/$MODEL/$OTPD \
