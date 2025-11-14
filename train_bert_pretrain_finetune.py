@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 train_bert_pretrain_finetune.py
-階段 1：BERT 預訓練 (Masked Feature Modeling)
-階段 2：微調分類 (Finetuning)
-自動依超參數命名模型檔案
+Stage 1: BERT Pre-training (Masked Feature Modeling)
+Stage 2: Fine-tuning for Classification
+Automatically names model files based on hyperparameters
 """
 import os
 import numpy as np
@@ -16,51 +16,50 @@ from transformers import BertConfig, BertModel
 from sklearn.metrics import precision_score, recall_score, f1_score
 
 # ============================================================
-# 載入資料
+# Load Data
 # ============================================================
-pretrain_npz_path = "datasets/initial_competition/sample_20000/sample_20000_seq_len_200/train_resplit.npz"
+pretrain_npz_path = "datasets/initial_competition/sample_320000/sample_320000_seq_len_200/train_resplit.npz"
 finetune_npz_path = "datasets/initial_competition/predict_data/predict_data_seq_len_200/train_resplit.npz"
-val_npz_path      = "datasets/initial_competition/sample_20000/sample_20000_seq_len_200/val_resplit.npz"
+val_npz_path      = "datasets/initial_competition/predict_data/predict_data_seq_len_200/val_resplit.npz"
 
-print("📦 載入資料中...")
+print("?? Loading data...")
 
-# --- 預訓練資料 ---
+# --- Pre-training Data ---
 pretrain_data = np.load(pretrain_npz_path, allow_pickle=True)
 tokens_pre = pretrain_data["tokens"].astype(np.float32)
 mask_pre   = pretrain_data["mask"].astype(np.int64)
-print(f"✅ 預訓練資料: tokens={tokens_pre.shape}, mask={mask_pre.shape}")
+print(f"? Pre-training data: tokens={tokens_pre.shape}, mask={mask_pre.shape}")
 
-# --- 微調訓練資料 ---
+# --- Fine-tuning Data ---
 finetune_data = np.load(finetune_npz_path, allow_pickle=True)
 tokens_finetune = finetune_data["tokens"].astype(np.float32)
 mask_finetune   = finetune_data["mask"].astype(np.int64)
 labels_finetune = finetune_data["label"].astype(np.int64)
-print(f"✅ 微調訓練資料: tokens={tokens_finetune.shape}, mask={mask_finetune.shape}, label={labels_finetune.shape}")
+print(f"? Fine-tuning data: tokens={tokens_finetune.shape}, mask={mask_finetune.shape}, label={labels_finetune.shape}")
 threshold = 0.3
 alpha = 0.6
 gamma = 1.5
-print(f"✅ 微調參數: threshold={threshold}, alpha={alpha}, gamma={gamma}")
+print(f"? Fine-tuning parameters: threshold={threshold}, alpha={alpha}, gamma={gamma}")
 
-
-# --- 驗證資料 ---
+# --- Validation Data ---
 val_data = np.load(val_npz_path, allow_pickle=True)
 tokens_val = val_data["tokens"].astype(np.float32)
 mask_val   = val_data["mask"].astype(np.int64)
 labels_val = val_data["label"].astype(np.int64)
-print(f"✅ 驗證資料: tokens={tokens_val.shape}, mask={mask_val.shape}, label={labels_val.shape}")
+print(f"? Validation data: tokens={tokens_val.shape}, mask={mask_val.shape}, label={labels_val.shape}")
 
 unique, counts = np.unique(labels_val, return_counts=True)
 val_label_stats = dict(zip(unique, counts))
-print(f"📊 Validation 標籤分佈: {val_label_stats}")
+print(f"?? Validation label distribution: {val_label_stats}")
 
 if 1 not in val_label_stats or val_label_stats[1] == 0:
-    print("⚠️ 驗證集中沒有異常樣本 (label=1)，F1 會永遠是 0！")
+    print("?? No anomaly samples (label=1) in the validation set, F1 will always be 0!")
 else:
     ratio = val_label_stats[1] / sum(val_label_stats.values())
-    print(f"⚙️ 正樣本比例: {ratio*100:.2f}%")
+    print(f"?? Positive sample ratio: {ratio*100:.2f}%")
 
 # ============================================================
-# 訓練設定
+# Training Settings
 # ============================================================
 pretrain_dir = "./checkpoints/bert/pretrained"
 finetune_dir = "./checkpoints/bert/finetuned"
@@ -79,21 +78,21 @@ dropout = 0.1
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ============================================================
-# 載入資料
+# Load Data
 # ============================================================
-print(f"📦 載入資料: {pretrain_npz_path}")
+print(f"?? Loading data: {pretrain_npz_path}")
 data = np.load(pretrain_npz_path, allow_pickle=True)
 tokens = data["tokens"].astype(np.float32)
 mask = data["mask"].astype(np.int64)
 labels = data["label"].astype(np.int64)
 num_samples, seq_len, feat_dim = tokens.shape
-print(f"✅ tokens shape: {tokens.shape}, mask: {mask.shape}, label: {labels.shape}")
+print(f"? tokens shape: {tokens.shape}, mask: {mask.shape}, label: {labels.shape}")
 
 # ============================================================
-# Dataset 定義
+# Dataset Definition
 # ============================================================
 class MaskedFeatureDataset(Dataset):
-    """自監督預訓練資料集"""
+    """Self-supervised pre-training dataset"""
     def __init__(self, tokens, mask, mask_prob=0.15):
         self.tokens = tokens
         self.mask = mask
@@ -110,7 +109,7 @@ class MaskedFeatureDataset(Dataset):
         mask_pos = np.where(valid_mask)[0]
         n_mask = max(1, int(len(mask_pos) * self.mask_prob))
         masked_idx = np.random.choice(mask_pos, size=n_mask, replace=False)
-        x[masked_idx] = 0.0  # 遮蔽
+        x[masked_idx] = 0.0  # Masked
         return {
             "tokens": torch.tensor(x, dtype=torch.float32),
             "mask": torch.tensor(self.mask[idx], dtype=torch.long),
@@ -118,7 +117,7 @@ class MaskedFeatureDataset(Dataset):
         }
 
 class TransactionDataset(Dataset):
-    """微調資料集"""
+    """Fine-tuning dataset"""
     def __init__(self, tokens, mask, labels):
         self.tokens = tokens
         self.mask = mask
@@ -135,10 +134,10 @@ class TransactionDataset(Dataset):
         }
 
 # ============================================================
-# 模型定義
+# Model Definition
 # ============================================================
 class BertFeatureModel(nn.Module):
-    """預訓練：重建被遮蔽的 token"""
+    """Pre-training: Reconstruct the masked token"""
     def __init__(self, seq_len, feat_dim, hidden_size=256, num_layers=4, num_heads=8, ffn_size=512, dropout=0.1):
         super().__init__()
         config = BertConfig(
@@ -159,7 +158,7 @@ class BertFeatureModel(nn.Module):
         return self.projection(out.last_hidden_state)
 
 class BertSequenceClassifier(nn.Module):
-    """微調：序列分類"""
+    """Fine-tuning: Sequence classification"""
     def __init__(self, pretrained_encoder, feat_dim, hidden_size=256, dropout=0.1):
         super().__init__()
         self.encoder = pretrained_encoder
@@ -178,22 +177,21 @@ class BertSequenceClassifier(nn.Module):
         return self.classifier(pooled)
 
 # ============================================================
-# 預訓練
+# Pre-training
 # ============================================================
-print("\n🚀 [Stage 1] 預訓練階段 (Masked Feature Modeling)")
+print("\n [Stage 1] Pre-training stage (Masked Feature Modeling)")
 
 bert_model = BertFeatureModel(seq_len, feat_dim, hidden_size, num_layers, num_heads, ffn_size, dropout).to(device)
 pretrain_name = f"pretrain_seq{seq_len}_feat{feat_dim}_mask{mask_prob}_h{hidden_size}_l{num_layers}_e{epochs_pretrain}.pt"
 pretrain_path = os.path.join(pretrain_dir, pretrain_name)
 
 if os.path.exists(pretrain_path):
-    print(f"📦 載入資料: {pretrain_path}")
+    print(f" Loading model: {pretrain_path}")
     bert_model.load_state_dict(torch.load(pretrain_path, map_location=device))
 
 else:
     pre_ds = MaskedFeatureDataset(tokens_pre, mask_pre, mask_prob)
     pre_dl = DataLoader(pre_ds, batch_size=batch_size, shuffle=True)
-
 
     optimizer = torch.optim.AdamW(bert_model.parameters(), lr=lr_pretrain)
     criterion = nn.MSELoss()
@@ -213,15 +211,15 @@ else:
             total_loss += loss.item() * x.size(0)
         print(f"Epoch {epoch}: pretrain_loss={total_loss / len(pre_dl.dataset):.6f}")
 
-    # === 儲存預訓練模型（含超參數資訊）===
+    # Save pre-trained model
     os.makedirs(pretrain_dir, exist_ok=True)
     torch.save(bert_model.state_dict(), pretrain_path)
-    print(f"✅ 預訓練模型已儲存至: {pretrain_path}")
+    print(f" Pre-trained model saved to: {pretrain_path}")
 
 # ============================================================
-# 微調階段 (Finetuning)
+# Fine-tuning (Classification)
 # ============================================================
-print("\n🎯 [Stage 2] 微調分類階段")
+print("\n [Stage 2] Fine-tuning classification stage")
 
 pretrained_encoder = bert_model.encoder
 clf_model = BertSequenceClassifier(pretrained_encoder, feat_dim, hidden_size, dropout).to(device)
@@ -230,10 +228,9 @@ optimizer = torch.optim.AdamW(clf_model.parameters(), lr=lr_finetune)
 pos = int(labels_finetune.sum())
 neg = int(len(labels_finetune) - pos)
 pos_weight = torch.tensor([neg / max(pos, 1)], dtype=torch.float32, device=device)
-print(f"🔧 pos={pos}, neg={neg}, pos_weight={pos_weight.item():.3f}")
+print(f" pos={pos}, neg={neg}, pos_weight={pos_weight.item():.3f}")
 
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='max', factor=0.5, patience=5)
-
 
 class FocalLoss(torch.nn.Module):
     def __init__(self, alpha=0.75, gamma=2.0):
@@ -256,11 +253,8 @@ dataset = TransactionDataset(tokens, mask, labels)
 train_ds = TransactionDataset(tokens_finetune, mask_finetune, labels_finetune)
 val_ds   = TransactionDataset(tokens_val, mask_val, labels_val)
 
-
 train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 val_dl = DataLoader(val_ds, batch_size=batch_size, shuffle=False)
-
-
 
 def evaluate(loader):
     clf_model.eval()
@@ -270,7 +264,7 @@ def evaluate(loader):
             x = batch["tokens"].to(device)
             m = batch["mask"].to(device)
             y = batch["label"].to(device).unsqueeze(1)
-            out = clf_model(x, m)# shape (B,1), 未經 Sigmoid
+            out = clf_model(x, m)# shape (B,1), ¥¼¸g Sigmoid
             loss = criterion(out, y)       # y shape (B,1), float(0/1)
             # loss = criterion(out, y)
             total_loss += loss.item() * x.size(0)
@@ -286,9 +280,7 @@ def evaluate(loader):
     acc = (np.array(all_preds) == np.array(all_labels)).mean()
     return avg_loss, acc, prec, rec, f1
 
-
 from datetime import datetime
-
 
 best_f1 = 0
 for epoch in range(1, epochs_finetune + 1):
@@ -313,7 +305,7 @@ for epoch in range(1, epochs_finetune + 1):
     if f1 > best_f1:
         best_f1 = f1
         best_model = clf_model.state_dict()
-        
+
 if best_model:
     os.makedirs(finetune_dir, exist_ok=True)    
     timestamp = datetime.now().strftime("%m%d_%H%M%S")
@@ -324,5 +316,4 @@ if best_model:
     )
     finetune_path = os.path.join(finetune_dir, finetune_name)
     torch.save(best_model, finetune_path)
-    print(f"✅ 儲存最佳微調模型 (val_f1={best_f1:.4f}) → {finetune_path}")
-
+    print(f"Best fine-tuned model saved (val_f1={best_f1:.4f}) ¡÷ {finetune_path}")
