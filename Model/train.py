@@ -1,5 +1,5 @@
 """
-main_train.py
+train.py
 主要訓練程式碼。
 
 本模組負責模型的整體訓練流程，包括：
@@ -16,8 +16,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score
+import matplotlib
 import matplotlib.pyplot as plt
-from dataloader import get_dataloader
+matplotlib.use('Agg')
+from Preprocess.dataloader import get_dataloader
 from tqdm import tqdm
 
 
@@ -371,7 +373,7 @@ def main(args):
     # Model Setup (User-defined model)
     # -------------------------------------------
     # Example: from model import YourModel
-    from model import RNNSequenceClassifier
+    from Model.model import RNNSequenceClassifier
     model = RNNSequenceClassifier(
         args=args,
         input_dim=8,
@@ -462,7 +464,7 @@ def main(args):
     # -------------------------------------------
     # Inference after training
     # -------------------------------------------
-    from inference import run_inference
+    from Model.inference import run_inference
     print("🚀 開始產生 submission.csv ...")
 
     val_output_csv = f"{output_dir}/val_inf.csv"

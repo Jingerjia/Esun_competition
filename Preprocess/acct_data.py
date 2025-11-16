@@ -9,20 +9,17 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # ========= CONFIG =========
-CACHE_DIR = Path("analyze_UI/cache")
+CACHE_DIR = Path("Preprocess/cache")
 DATA_DIR = Path("datasets/initial_competition")
 DETAILS_DIR = CACHE_DIR / "details"
 RANK_DIR = CACHE_DIR / "ranks"
 RANK_DIR.mkdir(parents=True, exist_ok=True)
-IMG_DIR = CACHE_DIR / "img"
 
 INDEX_JSON = CACHE_DIR / "account_index.json"
 SUMMARY_CSV = CACHE_DIR / "acct_summary.csv"
 PREDICT_ACC = DATA_DIR / "acct_predict.csv"
 DIST_DAYSPAN_CSV = CACHE_DIR / "dist_day_span_bucket.csv"
 DIST_MEANTXN_CSV = CACHE_DIR / "dist_mean_txn_per_day_bucket.csv"
-PIE_DAYSPAN = IMG_DIR / "fig_day_span_all.png"
-PIE_MEANTXN = IMG_DIR / "fig_mean_txn_all.png"
 
 CHANNEL_MAP = {
     "01": "ATM", "02": "臨櫃", "03": "行動銀行", "04": "網路銀行",
@@ -57,14 +54,12 @@ def bucket_total_txn(x):
 def second_preprocess(dist_total=None):
     """
     檢查 dist_total_txn_bucket.csv 是否完整；若缺失或 bucket 群組不全，
-    則自動重建包含 all / alert / predict / esun / non_esun 的分布統計
-    並繪製對應圓餅圖。
+    則自動重建包含 all / alert / predict / esun / non_esun 的分布統計。
 
     功能說明
     ----------
     - 依照 acct_summary.csv 中帳戶屬性分組
     - 對 total_txn_count 進行 bucket 區間統計
-    - 生成各組別的圓餅圖（存於 cache/img）
     - 更新 dist_total_txn_bucket.csv
     """
     need_build = False
@@ -98,18 +93,6 @@ def second_preprocess(dist_total=None):
             counts = b.value_counts().reindex(buckets, fill_value=0)
             for k, v in counts.items():
                 out_rows.append({"group": gname, "bucket": k, "count": int(v)})
-            # 畫圖
-            labels = [k for k, v in counts.items() if v > 0]
-            sizes = [v for v in counts.values if v > 0]
-            fig, ax = plt.subplots(figsize=(6, 6))
-            wedges, _ = ax.pie(sizes, startangle=90)
-            ax.legend(wedges, labels, title="Buckets", loc="center left",
-                        bbox_to_anchor=(1, 0, 0.5, 1))
-            ax.set_title(f"Total Txn Count ({gname})")
-            ax.axis("equal")
-            fig.savefig(IMG_DIR / f"fig_total_txn_{gname}.png", bbox_inches="tight")
-            plt.close(fig)
-            print(f"  [OK] 已生成 fig_total_txn_{gname}.png")
 
         pd.DataFrame(out_rows).to_csv(dist_total, index=False)
         print(f"[AutoGen] dist_total_txn_bucket.csv 已更新（共 {len(out_rows)} 筆）")
@@ -223,7 +206,7 @@ class DataManager:
         end_t = time.time()
         print(f"[✓] 資料載入完成，用時 {end_t - start_t:.2f} 秒")
 
-    def rank_file(self, group, sort_key, asc)    
+    def rank_file(self, group, sort_key, asc):
         """
         回傳 rank 快取檔案的完整路徑。
 

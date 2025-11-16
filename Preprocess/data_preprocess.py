@@ -17,7 +17,7 @@ from tqdm import tqdm
 import argparse
 
 # ========= CONFIG =========
-CACHE_DIR = Path("analyze_UI/cache")
+CACHE_DIR = Path("Preprocess/cache")
 DETAILS_DIR = CACHE_DIR / "details"
 RANK_DIR = CACHE_DIR / "ranks"
 INDEX_JSON = CACHE_DIR / "account_index.json"
@@ -163,7 +163,8 @@ def time2vec_scalar(hour, minute):
 
 # ========= DATA PREPROCESS =========
 
-def process_account(args, acct, meta, index_info, global_exchange):    """
+def process_account(args, acct, meta, index_info, global_exchange):
+    """
     將單一帳戶的交易紀錄轉換成模型可使用的序列特徵格式。
 
     功能:
@@ -182,7 +183,8 @@ def process_account(args, acct, meta, index_info, global_exchange):    """
     回傳:
         dict: 包含所有模型特徵的字典。
     """
-    file_path = DETAILS_DIR / index_info['file']
+
+    file_path = os.path.join(DETAILS_DIR, index_info['file'])
     start, end = index_info['start'], index_info['end']
     df = pd.read_csv(file_path).iloc[start:end].reset_index(drop=True)
     # 僅取最後 50 筆

@@ -10,10 +10,8 @@ Usage:
 
 from __future__ import annotations
 import pandas as pd, numpy as np, hashlib, json, string
+import os
 from pathlib import Path
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 # ========= CONFIG =========
@@ -22,26 +20,20 @@ SRC_TXN = f"{DATA_DIR}/acct_transaction.csv"
 SRC_ALERT = f"{DATA_DIR}/acct_alert.csv"
 SRC_PREDICT = f"{DATA_DIR}/acct_predict.csv"
 
-CACHE_DIR = Path("analyze_UI/cache")
-DETAILS_DIR = CACHE_DIR / "details"
+CACHE_DIR = Path("Preprocess/cache")
+DETAILS_DIR = Path(os.path.join(CACHE_DIR, "details"))
 DETAILS_DIR.mkdir(parents=True, exist_ok=True)
 
 MAX_ROWS_PER_FILE = 100_000
 
-INDEX_JSON = CACHE_DIR / "account_index.json"
-SUMMARY_CSV = CACHE_DIR / "acct_summary.csv"
-RANK_TXNCOUNT_CSV = CACHE_DIR / "rank_by_txn_count.csv"
-RANK_TXNAMT_CSV = CACHE_DIR / "rank_by_txn_amt.csv"
-RANK_DAYSPAN_CSV = CACHE_DIR / "rank_by_day_span.csv"
-DIST_DAYSPAN_CSV = CACHE_DIR / "dist_day_span_bucket.csv"
-DIST_MEANTXN_CSV = CACHE_DIR / "dist_mean_txn_per_day_bucket.csv"
-PIE_DAYSPAN_PNG = lambda group: CACHE_DIR / f"img/fig_day_span_{group}.png"
-PIE_MEANTXN_PNG = lambda group: CACHE_DIR / f"img/fig_mean_txn_{group}.png"
+INDEX_JSON = Path(os.path.join(CACHE_DIR, "account_index.json"))
+SUMMARY_CSV = Path(os.path.join(CACHE_DIR, "acct_summary.csv"))
+RANK_TXNCOUNT_CSV = Path(os.path.join(CACHE_DIR, "rank_by_txn_count.csv"))
+RANK_TXNAMT_CSV = Path(os.path.join(CACHE_DIR, "rank_by_txn_amt.csv"))
+RANK_DAYSPAN_CSV = Path(os.path.join(CACHE_DIR, "rank_by_day_span.csv"))
+DIST_DAYSPAN_CSV = Path(os.path.join(CACHE_DIR, "dist_day_span_bucket.csv"))
+DIST_MEANTXN_CSV = Path(os.path.join(CACHE_DIR, "dist_mean_txn_per_day_bucket.csv"))
 
-IMG_DIR = CACHE_DIR / "img"
-IMG_DIR.mkdir(parents=True, exist_ok=True)
-
-print(f"IMG_DIR = {IMG_DIR}")
 
 CHANNEL_MAP = {
     "01": "ATM", "02": "臨櫃", "03": "行動銀行", "04": "網路銀行",
@@ -422,16 +414,7 @@ def build_distributions(groups):
         m_counts = m_b.value_counts().reindex(["1","2","3-5","6-10","11-20","21-50","51-100","101-500","500+"],fill_value=0)
         for k,v in d_counts.items(): day_rows.append({"group":gname,"bucket":k,"count":int(v)})
         for k,v in m_counts.items(): mean_rows.append({"group":gname,"bucket":k,"count":int(v)})
-        # pies
-        def pie(counts, title, out_path):
-            labels=[k for k,v in counts.items() if v>0]; sizes=[v for v in counts.values if v>0]
-            fig,ax=plt.subplots(figsize=(6,6))
-            wedges,_=ax.pie(sizes,startangle=90)
-            ax.legend(wedges,labels,title="Buckets",loc="center left",bbox_to_anchor=(1,0,0.5,1))
-            ax.set_title(title); ax.axis("equal")
-            fig.savefig(out_path,bbox_inches="tight"); plt.close(fig)
-        pie(d_counts,f"Day Span ({gname})",PIE_DAYSPAN_PNG(gname))
-        pie(m_counts,f"Mean Txn/Day ({gname})",PIE_MEANTXN_PNG(gname))
+
     pd.DataFrame(day_rows).to_csv(DIST_DAYSPAN_CSV,index=False)
     pd.DataFrame(mean_rows).to_csv(DIST_MEANTXN_CSV,index=False)
 

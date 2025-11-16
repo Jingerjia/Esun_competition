@@ -1,3 +1,5 @@
+
+
 # ----------- training hyperparameters -----------
 EPOCHS=100
 SEED=42
@@ -34,15 +36,19 @@ echo "========================================"
 echo "Step 1: Running dataloader to generate NPZ files..."
 echo "========================================"
 
+
+
 if [ "${DATA_GEN}" = "TRUE" ]; then
-    python data_preprocess.py \
+	python -m Preprocess.preprocess_cache
+	python -m Preprocess.acct_data	
+    python -m Preprocess.data_preprocess \
     --data_dir $DATA_DIR \
     --test_dir $TEST_DIR \
     --train_ratio $TRAIN_RATIO \
     --predict_data $PREDICT_DATA \
     --sample_size $SAMPLE \
     --seq_len $SEQ_LEN \
-    --seed $seed
+    --seed $SEED
 else
     echo "跳過資料生成"
     TRAIN_NPZ=results/rnn/predict_data/train.npz
@@ -60,7 +66,7 @@ if [ ! "${TRAIN}" = "TRUE" ]; then
 	exit 1
 fi
 
-python main_train.py \
+python -m Model.train \
     --output_dir checkpoints/$MODEL/$OTPD \
     --train_npz $TRAIN_NPZ \
     --val_npz $VAL_NPZ \
