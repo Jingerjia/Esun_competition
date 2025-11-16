@@ -29,6 +29,21 @@ CHANNEL_CODE = [-1, 1, 2, 3, 4, 5, 6, 7, 8, 0]
 CHANNEL_MAP = {c: i for i, c in zip(CHANNEL_CODE, GLOBAL_CHANNELS)}
 
 def str2bool(v):
+    """
+    將字串轉換為布林值。
+
+    支援的字串包含：
+        True 類型：'yes', 'true', 't', 'y', '1'
+        False 類型：'no', 'false', 'f', 'n', '0'
+    若輸入布林值則直接回傳。
+    若無法解析則拋出 argparse.ArgumentTypeError。
+
+    參數:
+        v (str | bool): 要轉換的值。
+
+    回傳:
+        bool: 解析後的布林值。
+    """
     if isinstance(v, bool):
         return v
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -39,12 +54,35 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
 # ========= UTILS =========
-def load_rank_csv(path):
+def load_rank_csv(path):    
+    """
+    載入帳號排名 CSV，並回傳 acct 欄位的集合。
+
+    參數:
+        path (str | Path): CSV 檔案路徑。
+
+    回傳:
+        set[str]: 帳號字串集合。
+    """
     df = pd.read_csv(path)
     return set(df['acct'].astype(str).tolist())
 
 def piecewise_norm(val_twd):
-    # 線性縮放
+    """
+    依照金額 (台幣) 進行分段線性縮放。
+
+    分段規則：
+        100 → 0.05
+        1000 → 0.25
+        ...
+        1億以上 → 1.0
+
+    參數:
+        val_twd (float): 金額 (台幣)。
+
+    回傳:
+        float: 分段縮放結果，範圍 0~1。
+    """
     thresholds = [100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000]
     scales =     [0.05, 0.25, 0.45, 0.65, 0.85, 0.95, 1.0]
     if val_twd <= thresholds[0]:
@@ -57,6 +95,22 @@ def piecewise_norm(val_twd):
 
 # --- 定義交易筆數 bucket ---
 def bucket_txn_count(n):
+    """
+    依據交易筆數將帳戶分入對應 bucket。
+
+    分類範例:
+        1 → 'b1'
+        2 → 'b2'
+        3~5 → 'b3_5'
+        ...
+        >=500 → 'b500p'
+
+    參數:
+        n (int): 交易筆數。
+
+    回傳:
+        str: bucket 標籤。
+    """
     if n == 1: return "b1"
     elif n == 2: return "b2"
     elif 3 <= n <= 5: return "b3_5"
@@ -69,21 +123,21 @@ def bucket_txn_count(n):
 
 def normalize_money(x, curr_list, exchange_rate_json, default_currency="TWD", mode="piecewise"):
     """
-    標準化金額:
-      - 台幣基準：
-          100 → 0.05
-          1000 → 0.25
-          1萬 → 0.45
-          10萬 → 0.65
-          100萬 → 0.85
-          1000萬 → 0.95
-          1億以上 → 1.0
-      - 其他幣別：依匯率換算成台幣再套同規則
+    將金額依幣別轉換為台幣後，套用分段縮放函式進行正規化。
+
+    流程:
+        1. 依幣別查匯率換算成台幣。
+        2. 套用 piecewise_norm() 映射至 0 ~ 1。
+
     參數:
-        x: 金額列表
-        curr_list: 幣別列表
-        exchange_rate_json: 幣別對台幣匯率 dict
-        default_currency: 預設幣別 (TWD)
+        x (list[float]): 金額列表。
+        curr_list (list[str]): 幣別列表。
+        exchange_rate_json (dict): 幣別對 TWD 匯率。
+        default_currency (str): 預設台幣代碼。
+        mode (str): 可擴充，預設 'piecewise'。
+
+    回傳:
+        list[float]: 正規化後金額。
     """
     result = []
     for val, cur in zip(x, curr_list):
@@ -94,14 +148,40 @@ def normalize_money(x, curr_list, exchange_rate_json, default_currency="TWD", mo
     return result
 
 def time2vec_scalar(hour, minute):
-    # 基礎 Time2Vec (簡化版)
+    """
+    基礎版 Time2Vec：將時間 (時、分) 映射為 sin/cos 兩維向量。
+
+    參數:
+        hour (int): 小時 (0~23)。
+        minute (int): 分鐘 (0~59)。
+
+    回傳:
+        list[float]: [sin(value), cos(value)] 時間轉換後的向量
+    """
     val = hour * 60 + minute
     return [math.sin(val / 1440 * math.pi), math.cos(val / 1440 * math.pi)]
 
 # ========= DATA PREPROCESS =========
 
-def process_account(args, acct, meta, index_info, global_exchange):
-    """將單一帳戶資料轉換成模型輸入格式"""
+def process_account(args, acct, meta, index_info, global_exchange):    """
+    將單一帳戶的交易紀錄轉換成模型可使用的序列特徵格式。
+
+    功能:
+        - 讀取對應交易明細 CSV
+        - 取最後 seq_len 筆交易，並進行 padding
+        - 產生各項特徵 (交易型別、通路 index、金額正規化、Time2Vec、天數差等)
+        - 建立 mask、序列長度等資訊
+
+    參數:
+        args: argparse 設定參數。
+        acct (str): 帳號 ID。
+        meta (dict): meta JSON 全體資訊。
+        index_info (dict): acct 對應的檔案與起訖 index。
+        global_exchange (dict): 幣別匯率表。
+
+    回傳:
+        dict: 包含所有模型特徵的字典。
+    """
     file_path = DETAILS_DIR / index_info['file']
     start, end = index_info['start'], index_info['end']
     df = pd.read_csv(file_path).iloc[start:end].reset_index(drop=True)
@@ -232,8 +312,30 @@ def process_account(args, acct, meta, index_info, global_exchange):
 
 def flatten_tokens(args, dataset, alert_accts, mode="train", soft_label=0.3):
     """
-    將帳戶級別資料轉為 (N, 50, 10) tokens
+    將帳戶級別資料展開成固定 (N, seq_len, 10) 的 token 張量。
+
+    功能:
+        - 將 feature dict 轉換為模型可用的 token tensor
+        - 產生 mask、label（警示帳戶 = 1）
+        - 回傳 tokens / masks / labels / acct list
+
+    參數:
+        args: argparse 設定。
+        dataset (list[dict]): 經 process_account 處理後的資料列表。
+        alert_accts (set[str]): 警示帳戶集合。
+        mode (str): train/val/test。
+        soft_label (float): 可用於 soft labeling（目前未使用）。
+
+    回傳:
+        tuple:
+            tokens (np.ndarray)
+            masks (np.ndarray)
+            labels (np.ndarray)
+            accts (np.ndarray)
+        用於模型訓練/推論的token格式
     """
+
+    # 將帳戶級別資料轉為 (N, 50, 10) tokens
     tokens, masks, labels, accts = [], [], [], []
     for r in dataset:
         N = len(r["txn_type"])  # SEQ_LEN
@@ -266,7 +368,23 @@ def flatten_tokens(args, dataset, alert_accts, mode="train", soft_label=0.3):
 # ========= MAIN PIPELINE =========
 
 def main(args):
+    """
+    執行資料前處理完整流程。
 
+    功能:
+        - 載入資料、匯率、帳號分類 CSV
+        - 依 bucket 與警示帳號進行分層抽樣
+        - 產生 train / val / test 的 JSON 與 NPZ
+        - 呼叫 process_account() 與 flatten_tokens()
+        - 對資料進行序列特徵轉換
+
+    參數:
+        args: argparse 解析結果。
+
+    回傳:
+        None
+    """
+    
     # 將 argparse 傳入的值更新全域變數
     seed = args.seed    
     samples = args.sample_size

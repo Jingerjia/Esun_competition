@@ -1,6 +1,13 @@
 """
 main_train.py
-主要訓練程式碼
+主要訓練程式碼。
+
+本模組負責模型的整體訓練流程，包括：
+- 資料載入
+- 模型初始化
+- 訓練、評估、推論
+- 指標繪圖與紀錄
+- 儲存最佳模型與輸出 submission.csv
 """
 
 import os, json, argparse, random, numpy as np, time, itertools
@@ -15,6 +22,21 @@ from tqdm import tqdm
 
 
 def str2bool(v):
+    """
+    將字串轉換為布林值。
+
+    支援的字串包含：
+        True 類型：'yes', 'true', 't', 'y', '1'
+        False 類型：'no', 'false', 'f', 'n', '0'
+    若輸入布林值則直接回傳。
+    若無法解析則拋出 argparse.ArgumentTypeError。
+
+    參數:
+        v (str | bool): 要轉換的值。
+
+    回傳:
+        bool: 解析後的布林值。
+    """
     if isinstance(v, bool):
         return v
     if v.lower() in ('yes', 'true', 't', 'y', '1'):
@@ -28,7 +50,14 @@ def str2bool(v):
 #  Utils
 # =====================
 def set_seed(seed):
-    """Set all random seeds for reproducibility."""
+    """
+    設定所有隨機種子，確保實驗結果可重現。
+
+    參數
+    ----------
+    seed : int
+        隨機種子值。
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -42,7 +71,32 @@ def set_seed(seed):
 # =====================
 def train_one_epoch(args, model, dataloader, optimizer, criterion, device):
     """
-    x: (B, T, D) Batch size, Transaction amount, Dimensions
+    執行單一 epoch 的模型訓練。
+
+    流程：
+        - 將每個 batch 送入模型計算 logits
+        - 計算 loss、梯度回傳並更新參數
+        - 追蹤 epoch 的平均 loss
+
+    參數
+    ----------
+    args : argparse.Namespace
+        全域設定參數。
+    model : torch.nn.Module
+        訓練中的模型。
+    dataloader : DataLoader
+        訓練資料的 dataloader。
+    optimizer : torch.optim.Optimizer
+        用來更新模型的 optimizer。
+    criterion : nn.Module
+        損失函式。
+    device : torch.device
+        執行裝置（CPU/GPU）。
+
+    Returns
+    -------
+    np.mean(losses): float
+        本 epoch 的平均訓練損失。
     """
     model.train()
     losses = []
@@ -64,6 +118,44 @@ def train_one_epoch(args, model, dataloader, optimizer, criterion, device):
     return np.mean(losses)
 
 def evaluate(args, model, dataloader, device, thresholds = 0.5):
+    """
+    使用驗證集評估模型分類表現。
+
+    評估項目：
+        - Accuracy
+        - Precision
+        - Recall
+        - F1-score
+        - 並回傳預測與真實標籤供後續分析
+
+    參數
+    ----------
+    args : argparse.Namespace
+        全域超參數。
+    model : nn.Module
+        要評估的模型。
+    dataloader : DataLoader
+        驗證或測試用 dataloader。
+    device : torch.device
+        執行裝置。
+    thresholds : float, optional
+        將 sigmoid 機率轉為 0/1 標籤的臨界值。
+
+    Returns
+    -------
+    acc : float
+        Accuracy。
+    f1_alert : float
+        針對 alert=1 類別的 F1 分數。
+    prec_alert : float
+        precision 值。
+    rec_alert : float
+        recall 值。
+    preds : list[int]
+        預測標籤。
+    trues : list[int]
+        真實標籤。
+    """
     model.eval()
     preds, trues = [], []
     with torch.no_grad():
@@ -85,6 +177,20 @@ def evaluate(args, model, dataloader, device, thresholds = 0.5):
 #  Visualization Utils
 # =====================
 def plot_confusion_matrix(cm, labels, save_path, title="Confusion Matrix"):
+    """
+    畫出混淆矩陣並儲存為圖片。
+
+    參數
+    ----------
+    cm : ndarray
+        混淆矩陣。
+    labels : list[str]
+        標籤名稱。
+    save_path : str
+        輸出圖片路徑。
+    title : str, optional
+        圖片標題。
+    """
     plt.figure(figsize=(7, 6))
     plt.imshow(cm, interpolation='nearest', cmap='Blues')
     plt.title(title)
@@ -104,6 +210,26 @@ def plot_confusion_matrix(cm, labels, save_path, title="Confusion Matrix"):
     plt.close()
 
 def plot_metrics(epochs, train_accs, val_accs, train_f1s, val_f1s, save_path, train_losses=None):
+    """
+    繪製訓練過程的 Accuracy、F1-score、Loss 曲線。
+
+    參數
+    ----------
+    epochs : list[int]
+        epoch 數列。
+    train_accs : list[float]
+        訓練 accuracy。
+    val_accs : list[float]
+        驗證 accuracy。
+    train_f1s : list[float]
+        訓練 F1-score。
+    val_f1s : list[float]
+        驗證 F1-score。
+    save_path : str
+        圖片輸出目錄。
+    train_losses : list[float], optional
+        訓練 loss。
+    """
     train_accs = [t.detach().cpu().item() if torch.is_tensor(t) else t for t in train_accs]
     val_accs = [t.detach().cpu().item() if torch.is_tensor(t) else t for t in val_accs]
     train_f1s = [t.detach().cpu().item() if torch.is_tensor(t) else t for t in train_f1s]
@@ -138,9 +264,14 @@ def plot_metrics(epochs, train_accs, val_accs, train_f1s, val_f1s, save_path, tr
 # =====================
 def check_label_distribution(dataloader):
     """
-    檢查 dataloader 中的標籤分佈狀況。
-    - 印出各種 label 的出現次數與比例
-    - 偵測 NaN 或超出 [0,1] 的異常值
+    檢查 dataloader 的標籤分佈。
+
+    功能：
+        - 統計各標籤出現次數
+        - 印出比例
+        - 偵測 NaN 或超出 [0, 1] 範圍的異常標籤
+
+    若發現異常會直接拋出例外。
     """
     import numpy as np
     print("🔍 檢查訓練資料標籤分佈中...")
@@ -175,6 +306,22 @@ def check_label_distribution(dataloader):
 #  Main Training Flow
 # =====================
 def main(args):
+    """
+    主訓練流程函式。
+
+    功能：
+        - 建立輸出資料夾
+        - 載入資料與 dataloader
+        - 初始化模型
+        - 進行訓練、驗證、選擇最佳 checkpoint
+        - 繪製訓練曲線
+        - 驗證與推論輸出 CSV
+
+    參數
+    ----------
+    args : argparse.Namespace
+        所有訓練相關超參數與設定。
+    """
     start_time = time.time()
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -337,6 +484,27 @@ def main(args):
 #  Entry Point
 # =====================
 if __name__ == "__main__":
+    """
+   說明
+    ----------
+    使用者可於命令列輸入參數以調整訓練流程，例如：
+        --train_npz         訓練資料路徑
+        --val_npz           驗證資料路徑
+        --test_npz          測試資料路徑
+        --output_dir        輸出模型與結果的目錄
+        --sample_size       訓練樣本量
+        --seq_len           序列長度
+        --train_ratio       訓練/驗證比例
+        --lr                學習率
+        --epochs            訓練 epoch 數
+        --batch_size        batch 大小
+        --model             模型類型（如 "rnn"、"lstm"）
+        --predict_data      是否將預測資料加入訓練
+        --without_channel_currency_emb  是否不使用 channel/currency embedding
+        --rnn_hidden        RNN 隱層維度
+        --rnn_layers        RNN 層數
+        --bidirectional     是否使用雙向 RNN
+    """
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt", default=None)
     p.add_argument("--train_npz", default="datasets/initial_competition/predict_data/seq_len_100_soft_label_0.3/train.npz")

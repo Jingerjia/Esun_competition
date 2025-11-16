@@ -1,6 +1,12 @@
 """
 dataloader.py
-將 train.npz / test.npz 轉換成可供 Transformer 訓練的 Dataset
+
+將 train.npz / test.npz 轉換成可供 Transformer 訓練的 Dataset。
+負責：
+    - 載入 NPZ
+    - 整理 tokens / mask / label / acct
+    - 拆出 channel & currency 的 embedding index
+    - 傳回可直接給模型使用的 batch
 """
 
 import torch
@@ -16,8 +22,27 @@ NUM_CURRENCIES = 15 # 可根據你的實際幣別種類調整
 # ========= DATASET =========
 class TransactionDataset(Dataset):
     """
-    將 dataloader.py 輸出的 npz 轉換為 Transformer 訓練可用格式
-    每筆樣本 shape: (seq_len, num_features)
+    將 NPZ 檔案中的交易序列轉換成 Transformer 可用的 Dataset。
+
+    NPZ 結構需包含：
+        - tokens : (N, T, F)
+        - mask   : (N, T)
+        - label  : (N,)
+        - acct   : 帳號清單
+
+    每筆資料在 __getitem__ 中會：
+        - 拆出 channel index / currency index
+        - 移除原本 channel / currency 欄位（因為改用 embedding）
+        - 回傳 x, ch_idx, cu_idx, mask, label, acct
+
+    參數
+    ----------
+    args : argparse.Namespace
+        全域設定參數。
+    npz_path : str or Path
+        輸入的 .npz 檔案路徑。
+    device : str, optional
+        指定資料載入到的裝置，例如 "cpu" 或 "cuda"。
     """
 
     def __init__(self, args, npz_path, device="cpu"):
@@ -38,9 +63,40 @@ class TransactionDataset(Dataset):
         print(f"self.labels.max = {self.labels.max().item()}")
 
     def __len__(self):
+        """
+        回傳資料筆數（帳戶數）。
+
+        回傳
+        -------
+        len(self.tokens): int
+            總樣本數。
+        """
         return len(self.tokens)
 
     def __getitem__(self, idx, true_weight=1):
+        """
+        取得第 idx 筆資料並轉換成模型輸入格式。
+
+        回傳內容：
+
+        參數
+        ----------
+        idx : int
+            取第 idx 筆資料。
+        true_weight : float, optional
+            保留參數（目前未使用），可用於調整正常樣本權重。
+
+        回傳
+        -------
+        dict:            
+            - x        : (T, F_without_emb) 特徵（移除原本 channel/currency 欄位）
+            - ch_idx   : (T,) channel embedding index
+            - cu_idx   : (T,) currency embedding index
+            - mask     : (T,) padding mask
+            - label    : float, 該帳戶是否為警示帳戶
+            - acct     : 帳號字串
+            含模型所需欄位的字典。
+        """
         x = self.tokens[idx]  # (T, num_features)
         m = self.mask[idx]
         y = self.labels[idx]
@@ -73,6 +129,29 @@ class TransactionDataset(Dataset):
 
 # ========= DATALOADER =========
 def get_dataloader(args, npz_path, batch_size=64, shuffle=True, device="cpu", true_weight=1.0):
+    """
+    建立 PyTorch DataLoader，封裝 TransactionDataset。
+
+    參數
+    ----------
+    args : argparse.Namespace
+        全域設定參數。
+    npz_path : str or Path
+        來源 .npz 檔案。
+    batch_size : int, optional
+        batch 大小。
+    shuffle : bool, optional
+        是否隨機洗牌資料。
+    device : str, optional
+        選擇資料載入裝置（目前 Dataset 在 CPU 端）。
+    true_weight : float, optional
+        保留參數（尚未啟用），可用於樣本重加權。
+
+    回傳
+    -------
+    loader: DataLoader
+        可直接用於模型訓練 / 驗證的 dataloader。
+    """
     dataset = TransactionDataset(args, npz_path, device=device)
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=4, pin_memory=False)
     return loader

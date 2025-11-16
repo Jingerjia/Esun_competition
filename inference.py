@@ -23,9 +23,39 @@ def str2bool(v):
 @torch.no_grad()
 def run_inference(args, model, npz_path, output_csv, device="cpu", threshold=0.5):
     """
-    model: 已載入權重的 Transformer 模型
-    npz_path: 要推論的 npz 檔路徑 (ex: analyze_UI/cache/test.npz)
-    output_csv: 要輸出的 CSV 檔案路徑
+    使用已訓練完成的模型對指定 npz 資料集進行推論，並輸出帳戶級預測結果。
+    
+    功能說明
+    ----------
+    - 從 npz_path 載入帳戶序列資料
+    - 使用模型逐批推論（不回傳梯度）
+    - 將機率根據 threshold 轉成 0/1 標籤
+    - 產生輸出 CSV
+    - 若是比賽測試集，會依照官方 submission_template.csv 排序
+    參數
+    ----------
+    args : argparse.Namespace
+        由主程式傳入的參數集合（包含資料路徑與模型設定）。
+    model : torch.nn.Module
+        已載入訓練權重的模型，用於推論。
+    npz_path : str
+        需要進行推論的 npz 資料集路徑。
+        內容通常包含 tokens、mask、label、acct 等欄位。
+    output_csv : str
+        推論結果要輸出的 CSV 檔案路徑。
+    device : str, optional
+        推論使用的裝置，預設為 "cpu"。
+    threshold : float, optional
+        Sigmoid 機率轉換成分類標籤的分界值。預設為 0.5。
+
+    回傳
+    ----------
+    df: pandas.DataFrame
+        若輸入資料不是 Esun 官方測試集，直接回傳推論結果的 DataFrame。
+    df_reordered, alert_count: (pandas.DataFrame, int)
+        若是 Esun 測試集，會依 submission_template.csv 排序，並額外回傳 alert_count。
+
+
     """
     model.eval()
     loader = get_dataloader(args, npz_path, batch_size=64, shuffle=False, device=device)
@@ -70,7 +100,31 @@ def run_inference(args, model, npz_path, output_csv, device="cpu", threshold=0.5
 
 
 if __name__ == "__main__":
-    # 若要單獨執行：
+    """
+    模組進入點（entry point）。
+
+    此區塊允許 inference.py 被獨立執行，用於：
+        - 載入指定 ckpt 權重
+        - 初始化 RNNSequenceClassifier 模型
+        - 執行 run_inference() 產生推論結果
+        - 產生 inference.csv 並輸出 alert 預測數量
+
+    使用方式
+    ----------
+    直接於終端機執行，例如：
+        python inference.py --ckpt best_model.pth --test_npz datasets/test.npz
+
+    可調整參數
+    ----------
+    --ckpt                權重檔路徑（必填）
+    --rnn_hidden          RNN 隱層維度
+    --rnn_layers          RNN 層數
+    --bidirectional       是否使用雙向 RNN
+    --output_dir          輸出資料夾
+    --test_npz            測試資料 npz 路徑
+
+    此 entry point 的目的是提供簡易測試推論的方式，方便快速檢查模型運作是否正常。
+    """
     import os, argparse
     p = argparse.ArgumentParser()
     p.add_argument("--ckpt", default=None)

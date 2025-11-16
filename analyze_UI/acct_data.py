@@ -1,6 +1,6 @@
 """
 acct_data.py
-- 預先生成 rank 快取
+- 預先生成 rank 快取、分群統計資訊與輔助資料載入工具
 """
 
 import json, time, os
@@ -30,6 +30,19 @@ CHANNEL_MAP = {
 }
 
 def bucket_total_txn(x):
+    """
+    將交易筆數 total_txn_count 依區間分類為對應的 bucket。
+
+    參數
+    ----------
+    x : int or float
+        單一帳戶的交易筆數；若為 NaN 則回傳 "NA"。
+
+    回傳
+    ----------
+    str
+        所屬的交易筆數 bucket（如 "1"、"3-5"、"101-500" 等）。
+    """
     if pd.isna(x): return "NA"
     if x <= 1: return "1"
     if x <= 2: return "2"
@@ -42,7 +55,18 @@ def bucket_total_txn(x):
     return "500+"
 
 def second_preprocess(dist_total=None):
+    """
+    檢查 dist_total_txn_bucket.csv 是否完整；若缺失或 bucket 群組不全，
+    則自動重建包含 all / alert / predict / esun / non_esun 的分布統計
+    並繪製對應圓餅圖。
 
+    功能說明
+    ----------
+    - 依照 acct_summary.csv 中帳戶屬性分組
+    - 對 total_txn_count 進行 bucket 區間統計
+    - 生成各組別的圓餅圖（存於 cache/img）
+    - 更新 dist_total_txn_bucket.csv
+    """
     need_build = False
     exist_groups = set()
     if (not dist_total.exists()):
@@ -92,6 +116,20 @@ def second_preprocess(dist_total=None):
 
 # ========= Rank Cache Builder =========
 def ensure_rank_cache():
+    """
+    根據 acct_summary.csv 建立 / 更新 rank 快取。
+    排序方式包含：
+        - 交易筆數 total_txn_count
+        - 金額總和 total_amt_twd
+        - 橫跨天數 day_span
+    依照 asc/desc 各生成一份 rank CSV。
+
+    功能說明
+    ----------
+    - 若 rank_xxx.csv 不存在則生成
+    - 已存在之檔案不重複生成
+    - 用於分析、抽樣與 UI 查詢的快取
+    """
     start = time.time()
     if not SUMMARY_CSV.exists():
         raise FileNotFoundError("找不到 acct_summary.csv，請先執行 preprocess_cache_split_fast.py")
@@ -129,7 +167,34 @@ def ensure_rank_cache():
 
 # ========= Data Layer =========
 class DataManager:
+    """
+    管理所有帳戶資料快取、索引與分群資訊的資料載入類別。
+
+    功能說明
+    ----------
+    - 載入帳戶 summary（acct_summary.csv）
+    - 載入 index JSON：每個帳戶對應的詳細資料位置
+    - 檢查並生成 rank 快取
+    - 生成 / 補齊 dist_total_txn_bucket.csv 分布圖
+    - 提供載入單一帳戶交易明細的功能
+    """
     def __init__(self):
+        """
+        初始化 DataManager，並載入所有必要快取資料。
+
+        初始化流程
+        ----------
+        1. 讀取 acct_summary.csv（帳戶摘要資料）
+        2. 讀取 account_index.json（帳戶索引位置，用於定位詳細記錄）
+        3. 確認 rank cache 是否完整，不完整則自動生成
+        4. 確認 total_txn_count 分布圖資料是否完整，不完整則生成
+        5. 讀取各分群標籤（alert、predict、esun、non_esun）
+        
+        回傳
+        ----------
+        DataManager
+            建立完成的資料載入器實例。
+        """
         start_t = time.time()
         print("[1/4] 載入 Summary...")
         if not SUMMARY_CSV.exists() or not INDEX_JSON.exists():
@@ -158,20 +223,84 @@ class DataManager:
         end_t = time.time()
         print(f"[✓] 資料載入完成，用時 {end_t - start_t:.2f} 秒")
 
-    def rank_file(self, group, sort_key, asc):
+    def rank_file(self, group, sort_key, asc)    
+        """
+        回傳 rank 快取檔案的完整路徑。
+
+        參數
+        ----------
+        group : str
+            分群名稱，如「全部」「警示帳戶」「玉山帳戶」等。
+        sort_key : str
+            排序欄位（"交易筆數"、"金額總和"、"橫跨天數"）。
+        asc : bool
+            是否為遞增排序；False 則為遞減排序。
+
+        回傳
+        ----------
+        pathlib.Path
+            該排序條件對應的 rank CSV 檔案路徑。
+        """
         order = "asc" if asc else "desc"
         return RANK_DIR / f"rank_{group}_{sort_key}_{order}.csv"
 
     def load_rank_df(self, group, sort_key, asc):
+        """
+        載入 rank CSV，若不存在則自動重新生成 rank 快取。
+
+        參數
+        ----------
+        group : str
+            帳戶分群（全部 / 警示帳戶 / 玉山帳戶等）。
+        sort_key : str
+            排序欄位。
+        asc : bool
+            True 為遞增排序，False 為遞減排序。
+
+        回傳
+        ----------
+        pandas.DataFrame
+            排序後的帳戶資料（acct、交易筆數、金額總和、橫跨天數）。
+        """
         f = self.rank_file(group, sort_key, asc)
         if not f.exists():
             ensure_rank_cache()
         return pd.read_csv(f, dtype={"acct": "string"})
 
     def has_acct(self, acct: str):
+        """
+        檢查此帳戶是否存在於快取索引中。
+
+        參數
+        ----------
+        acct : str
+            帳戶代號。
+
+        回傳
+        ----------
+        bool
+            若該帳戶存在於索引中則回傳 True，否則 False。
+        """
         return acct in self.index
 
     def load_details_for(self, acct: str):
+        """
+        載入指定帳戶的所有交易明細。
+
+        此方法會依照 account_index.json 中紀錄的 start/end 位置，
+        只讀取該帳戶相關的行數，以避免整份 CSV 讀取造成效能浪費。
+
+        參數
+        ----------
+        acct : str
+            要查詢的帳戶代碼。
+
+        回傳
+        ----------
+        df: pandas.DataFrame
+            該帳戶所有交易記錄所組成的 DataFrame。
+            若帳戶不存在或資料區間為 0，則回傳空的 DataFrame。
+        """
         meta = self.index.get(acct)
         if not meta:
             return pd.DataFrame()
