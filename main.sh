@@ -7,8 +7,9 @@ LEARNING_RATE=1e-5 # 1e-5 5e-6
 BATCH_SIZE=16
 NO_CH_CUR_EMB=true # true, false
 MODEL=rnn # rnn
-DATA_GEN=FALSE
-TRAIN=TRUE
+DATA_GEN=TRUE   # TRUE, FASLE
+CACHE_GEN=TRUE # TRUE, FASLE
+TRAIN=TRUE     # TRUE, FASLE
 REPRODUCE=TRUE #是否重現提交之實驗結果
 # ----------- Data hyperparameters -----------
 SAMPLE=0 # 20000, 4000, 1000, 0
@@ -44,11 +45,16 @@ echo "========================================"
 echo "Step 1: Running dataloader to generate NPZ files..."
 echo "========================================"
 
-
-
-if [ "${DATA_GEN}" = "TRUE" ]; then
+if [ "${CACHE_GEN}" = "TRUE" ]; then
+    echo "快取生成中，若已生成請於 main.sh 將 CACHE_GEN 改成 FALSE"
+    sleep 5
 	python -m Preprocess.preprocess_cache
 	python -m Preprocess.acct_data	
+else
+    echo "跳過快取生成"
+fi
+
+if [ "${DATA_GEN}" = "TRUE" ]; then
     python -m Preprocess.data_preprocess \
     --data_dir $DATA_DIR \
     --test_dir $TEST_DIR \

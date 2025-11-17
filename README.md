@@ -21,7 +21,7 @@ Esun_competition/
 │  ├─ model.py
 │  ├─ train.py
 │  ├─ inference.py
-│  └─
+│  └─ dataloader.py
 ├─ datasets/
 │  ├─ submission_template.csv
 │  └─ initial_competition/
@@ -168,6 +168,8 @@ LEARNING_RATE=1e-5
 BATCH_SIZE=16
 NO_CH_CUR_EMB=true
 MODEL=rnn
+DATA_GEN=TRUE   # TRUE, FASLE
+CACHE_GEN=TRUE # TRUE, FASLE
 TRAIN=TRUE
 REPRODUCE=TRUE
 

@@ -19,7 +19,7 @@ from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')
-from dataloader import get_dataloader
+from Model.dataloader import get_dataloader
 from tqdm import tqdm
 
 
