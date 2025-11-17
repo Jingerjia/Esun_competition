@@ -2,8 +2,7 @@
 model.py
 模型架構設計
 
-提供 RNN/LSTM 版本的序列分類模型，用於處理交易序列，
-並支援可選用的 channel / currency embedding、mask 方式的變長序列處理。
+提供 RNN 的序列分類模型，用於處理交易序列，
 """
 import torch
 import torch.nn as nn
@@ -11,10 +10,9 @@ import math
 
 class RNNSequenceClassifier(nn.Module):
     """
-    通用的 RNN/LSTM 序列分類模型。
+    通用的 RNN 序列分類模型。
 
     功能特色：
-        - 支援 RNN 或 LSTM（由參數 cell 控制）
         - 支援雙向 RNN（bidirectional）
         - 可選擇是否加入 channel / currency 的 embedding
         - 支援 mask（padding mask）自動計算實際序列長度，並使用
@@ -43,8 +41,6 @@ class RNNSequenceClassifier(nn.Module):
         channel embedding 的維度。
     embed_dim_currency : int, optional
         currency embedding 的維度。
-    cell : str, optional
-        "rnn" 或 "lstm"，決定要使用的 RNN 單元類型。
     """
     def __init__(
         self,
@@ -58,7 +54,7 @@ class RNNSequenceClassifier(nn.Module):
         num_currencies=15,
         embed_dim_channel=4,
         embed_dim_currency=4,
-        cell="lstm"   # "rnn" 或 "lstm"
+        cell="rnn"
     ):
         super().__init__()
         self.without_channel_currency_emb = args.without_channel_currency_emb
@@ -82,7 +78,7 @@ class RNNSequenceClassifier(nn.Module):
             self.currency_emb = nn.Embedding(num_currencies, embed_dim_currency, padding_idx=0)
             total_input_dim = input_dim + embed_dim_channel + embed_dim_currency
 
-        # === RNN/LSTM 主體 ===
+        # === RNN 主體 ===
         self.rnn = nn.RNN(
             input_size=total_input_dim,
             hidden_size=rnn_hidden,

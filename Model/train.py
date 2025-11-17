@@ -19,7 +19,7 @@ from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_
 import matplotlib
 import matplotlib.pyplot as plt
 matplotlib.use('Agg')
-from Preprocess.dataloader import get_dataloader
+from dataloader import get_dataloader
 from tqdm import tqdm
 
 
@@ -380,7 +380,7 @@ def main(args):
         rnn_hidden=args.rnn_hidden,
         rnn_layers=args.rnn_layers,
         bidirectional=args.bidirectional,
-        cell=args.model  # "rnn" 或 "lstm"
+        cell=args.model 
         ).to(device)
     log_file.write("======================================== Model ======================================== \n")
     log_file.write(str(model))  # ✅ 轉為字串
@@ -500,7 +500,7 @@ if __name__ == "__main__":
         --lr                學習率
         --epochs            訓練 epoch 數
         --batch_size        batch 大小
-        --model             模型類型（如 "rnn"、"lstm"）
+        --model             模型類型（如 "rnn"）
         --predict_data      是否將預測資料加入訓練
         --without_channel_currency_emb  是否不使用 channel/currency embedding
         --rnn_hidden        RNN 隱層維度

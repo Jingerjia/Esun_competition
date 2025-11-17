@@ -1,7 +1,6 @@
 datasets/
-zip/
+analyze_UI/cache/
 Preprocess/cache/
 results/
 __pycache__/
 checkpoints/
-checkpoints.zip

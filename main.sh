@@ -6,9 +6,10 @@ SEED=42
 LEARNING_RATE=1e-5 # 1e-5 5e-6
 BATCH_SIZE=16
 NO_CH_CUR_EMB=true # true, false
-MODEL=rnn # lstm, rnn, transformer
+MODEL=rnn # rnn
 DATA_GEN=FALSE
 TRAIN=TRUE
+REPRODUCE=TRUE #是否重現提交之實驗結果
 # ----------- Data hyperparameters -----------
 SAMPLE=0 # 20000, 4000, 1000, 0
 PREDICT_DATA=true # true, false
@@ -16,7 +17,7 @@ SEQ_LEN=200
 TRAIN_RATIO=0.9 # 0.9 0.7
 
 
-# ----------- Data hyperparameters -----------
+# ----------- Path hyperparameters -----------
 if [ "$PREDICT_DATA" = true ]; then
     SAMPLE_TYPE="predict_data"
 else
@@ -28,8 +29,15 @@ TEST_DIR=datasets/initial_competition/Esun_test
 
 echo "DATA_DIR=$DATA_DIR"
 
-TRAIN_NPZ=$DATA_DIR/train.npz
-VAL_NPZ=$DATA_DIR/val.npz
+if [ "${REPRODUCE}" = "TRUE" ]; then
+    echo "重現實驗結果"
+    TRAIN_NPZ=results/rnn/predict_data/train.npz
+    VAL_NPZ=results/rnn/predict_data/val.npz
+else
+    TRAIN_NPZ=$DATA_DIR/train.npz
+    VAL_NPZ=$DATA_DIR/val.npz
+fi
+
 TEST_NPZ=$TEST_DIR/Esun_test_seq_${SEQ_LEN}.npz
 # ======== Stage 1：Data Preprocess ========
 echo "========================================"
@@ -51,8 +59,6 @@ if [ "${DATA_GEN}" = "TRUE" ]; then
     --seed $SEED
 else
     echo "跳過資料生成"
-    TRAIN_NPZ=results/rnn/predict_data/train.npz
-    VAL_NPZ=results/rnn/predict_data/val.npz
 fi
 
 # ======== Stage 2：training ========

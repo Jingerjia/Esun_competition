@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Preprocess & Split Cache Builder (FAST bucketed version)
-按帳號 SHA1 前兩位分桶，一次性寫入，每桶最多 100,000 筆。
-
-Usage:
-    python preprocess_cache_split_fast.py
+preprocess_cache.py
 """
 
 from __future__ import annotations
@@ -33,6 +29,8 @@ RANK_TXNAMT_CSV = Path(os.path.join(CACHE_DIR, "rank_by_txn_amt.csv"))
 RANK_DAYSPAN_CSV = Path(os.path.join(CACHE_DIR, "rank_by_day_span.csv"))
 DIST_DAYSPAN_CSV = Path(os.path.join(CACHE_DIR, "dist_day_span_bucket.csv"))
 DIST_MEANTXN_CSV = Path(os.path.join(CACHE_DIR, "dist_mean_txn_per_day_bucket.csv"))
+PIE_DAYSPAN_PNG = lambda group: CACHE_DIR / f"img/fig_day_span_{group}.png"
+PIE_MEANTXN_PNG = lambda group: CACHE_DIR / f"img/fig_mean_txn_{group}.png"
 
 
 CHANNEL_MAP = {

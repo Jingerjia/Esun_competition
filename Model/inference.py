@@ -7,7 +7,7 @@ inference.py
 
 import torch
 import pandas as pd
-from Preprocess.dataloader import get_dataloader
+from dataloader import get_dataloader
 import pandas as pd
 
 def str2bool(v):
